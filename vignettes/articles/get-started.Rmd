@@ -1,0 +1,78 @@
+---
+title: "Get started"
+output: rmarkdown::html_document
+---
+
+## Install
+
+```r
+# install.packages("remotes")
+remotes::install_github("tenmeh/unsaved")
+```
+
+## Track your form
+
+List the input ids that belong to the form. Add `unsaved_badge()` to show
+the number of changed fields. A changed field also gets a dot by its label.
+
+```r
+library(shiny)
+library(unsaved)
+
+ui <- fluidPage(
+  unsaved_badge(),
+  tabsetPanel(
+    id = "tabs",
+    tabPanel("Profile", textInput("name", "Name", "Ada"),
+             actionButton("save", "Save"),
+             actionButton("discard", "Discard")),
+    tabPanel("Other", "Another page")
+  )
+)
+
+server <- function(input, output, session) {
+  # Replace this in-memory store with your app's save code.
+  saved_name <- reactiveVal("Ada")
+  save_record <- function() {
+    saved_name(input$name)
+  }
+  tracker <- unsaved_track("name", on_save = save_record)
+  observeEvent(input$save, {
+    save_record()
+    tracker$mark_saved()
+  })
+  observeEvent(input$discard, tracker$discard())
+}
+
+shinyApp(ui, server)
+```
+
+The package does not save data. Call `mark_saved()` after your own save
+finishes. Call `discard()` to restore the saved input values.
+
+`changed()` gives the ids of changed fields, `count()` gives their number,
+and `is_dirty()` tells you whether there are changes. Use `baseline()` for
+the saved values. The first value of a field added by `renderUI()` after
+start joins the baseline automatically.
+
+## Save and leave
+
+An `on_save` function adds **Save and leave** to the navigation dialog.
+It takes no arguments. The tracker marks values saved after it returns
+successfully, then opens the requested tab. Returning `FALSE` or raising
+an error keeps the edits and shows a safe failure message.
+
+## The navigation guard
+
+The guard stops tab clicks, arrow keys and `updateTabsetPanel()` while the
+form is dirty. The user can keep editing, discard, or save and leave.
+Call `mark_saved()`, `discard()` (and wait for the restored inputs), or
+`pause()` before navigating from the server. `resume()` restarts tracking.
+Set `guard_nav = FALSE` to turn off the navigation guard.
+
+The close or refresh guard uses the browser's own warning. Browsers may
+suppress it, especially without prior interaction. Set `guard_unload = FALSE`
+to turn it off. The live demo runs in an iframe; open it in a new tab to
+try the browser warning.
+
+[Try the profile editor](live-demo.html).

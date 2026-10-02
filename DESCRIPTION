@@ -1,0 +1,19 @@
+Package: unsaved
+Title: Track and Guard Unsaved Changes in 'shiny' Apps
+Version: 0.1.0
+Authors@R: person("Tanmay", "Chanda", role = c("aut", "cre", "cph"),
+    email = "tanmaychanda96@gmail.com")
+Description: Tracks changes to input values in 'shiny' applications, marks
+    changed fields, and guards navigation with a client-side confirmation
+    dialog. Applications retain responsibility for saving their data.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Language: en-GB
+Depends: R (>= 4.1.0)
+Imports: shiny (>= 1.7.0), htmltools, R6
+Suggests: testthat (>= 3.0.0), shinytest2, bslib, withr
+URL: https://github.com/tenmeh/unsaved, https://tenmeh.github.io/unsaved/
+BugReports: https://github.com/tenmeh/unsaved/issues
+Config/testthat/edition: 3
+Config/roxygen2/markdown: true
+Config/roxygen2/version: 8.1.0

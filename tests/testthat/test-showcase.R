@@ -1,0 +1,98 @@
+test_that("the showcase saves and loads session records", {
+  skip_if_not_installed("bslib")
+  withr::local_envvar(R_USER_CACHE_DIR = tempdir())
+  env <- new.env(parent = globalenv())
+  path <- system.file("examples/demo", package = "unsaved")
+  # library() may warn that a package was built under a newer R. That is not
+  # what this test checks.
+  suppressWarnings(sys.source(file.path(path, "global.R"), envir = env))
+  sys.source(file.path(path, "ui.R"), envir = env)
+  sys.source(file.path(path, "server.R"), envir = env)
+  expect_s3_class(env$ui, "shiny.tag.list")
+  shiny::testServer(env$server, {
+    session$setInputs(
+      name = "Ada Morgan", role = "Designer", location = "London",
+      bio = "Making useful things for our team.", newsletter = TRUE,
+      record = "sam"
+    )
+    session$flushReact()
+    session$setInputs(name = "Ada Edited")
+    expect_equal(tracker$changed(), "name")
+    expect_match(output$changes$html, "Ada Edited")
+    session$setInputs(save = 1)
+    expect_equal(records()$ada$name, "Ada Edited")
+    expect_equal(tracker$is_dirty(), FALSE)
+    session$setInputs(add_contact = 1)
+    expect_match(output$contact_field$html, "Available on Tuesdays")
+    session$setInputs(contact = "Available on Tuesdays")
+    expect_equal(tracker$is_dirty(), FALSE)
+    session$setInputs(contact = "Afternoons")
+    expect_equal(tracker$changed(), "contact")
+    session$setInputs(load = 1)
+    expect_equal(active(), "ada")
+    session$setInputs(save = 2, load = 2)
+    expect_equal(active(), "sam")
+    expect_equal(loading(), TRUE)
+    session$setInputs(
+      name = "Sam Patel", role = "Developer", location = "Bristol",
+      bio = "Building the next release.", newsletter = FALSE,
+      contact = "Available in the mornings"
+    )
+    expect_equal(loading(), FALSE)
+    expect_equal(tracker$is_dirty(), FALSE)
+    expect_match(output$saved_profile$html, "Sam Patel")
+  })
+})
+
+test_that("the showcase tabs and editing flows have no Shiny errors", {
+  skip_on_cran()
+  skip_if_not_installed("bslib")
+  app <- local_app_driver(
+    system.file("examples/demo", package = "unsaved"),
+    load_timeout = 30000
+  )
+  app$wait_for_idle()
+  for (tab in c("preferences", "saved", "profile")) {
+    app$set_inputs(tabs = tab)
+    app$wait_for_idle()
+    expect_equal(app$get_value(input = "tabs"), tab)
+    expect_no_shiny_errors(app)
+  }
+  app$click("add_contact")
+  app$wait_for_idle()
+  expect_equal(badge_text(app), "")
+  app$set_inputs(contact = "Afternoons", name = "Ada Edited")
+  app$wait_for_idle()
+  expect_equal(badge_text(app), "2 unsaved changes")
+  expect_equal(app$get_js("document.getElementById('load').disabled"), TRUE)
+  expect_match(app$get_html("#changes"), "Ada Edited")
+  app$click("save")
+  app$wait_for_idle()
+  expect_equal(badge_text(app), "")
+  app$set_inputs(name = "Temporary")
+  app$wait_for_idle()
+  app$click("discard")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "name"), "Ada Edited")
+  app$set_inputs(name = "Ada Saved")
+  app$wait_for_idle()
+  app$run_js("document.querySelector('[data-value=preferences]').click()")
+  app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
+  expect_equal(app$get_value(input = "tabs"), "profile")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "tabs"), "preferences")
+  app$set_inputs(newsletter = FALSE)
+  app$wait_for_idle()
+  app$click("save")
+  app$wait_for_idle()
+  app$set_inputs(tabs = "saved")
+  app$wait_for_idle()
+  expect_match(app$get_html("#saved_profile"), "Ada Saved")
+  app$set_inputs(record = "sam")
+  app$click("load")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "name"), "Sam Patel")
+  expect_equal(badge_text(app), "")
+  expect_no_shiny_errors(app)
+})

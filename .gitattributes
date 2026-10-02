@@ -1,0 +1,10 @@
+# Text files use LF line endings in the repository and in the working
+# tree, on every system. Mixed line endings make diffs noisy, and a
+# change of the line endings of a file conflicts with any other change.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

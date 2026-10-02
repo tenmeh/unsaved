@@ -1,0 +1,295 @@
+/* The documentation of unsaved.
+ *
+ * This file comes from the stylesheet of rewind, which comes from the tanmai
+ * site. The site holds the Poppins font itself. It does not use the CDN of
+ * Google. The site thus makes no request to another server, and it operates
+ * offline after it loads. The accent colour is the teal of the unsaved logo,
+ * and not the amber of rewind. The colours must identify this package.
+ *
+ * The logo is an ink #17202A form on cream #F4EFE4, with a teal #237A80
+ * change dot (pkgdown/logo/). The light theme uses that teal itself: it is
+ * 5.0:1 on white. On the dark background it is too dark to read, so the
+ * dark theme uses a light cyan of the same hue. Each value below was
+ * measured against WCAG AA, which needs 4.5:1 for text.
+ */
+
+/* ---- Poppins, Latin subset, SIL OFL 1.1 (see fonts/OFL.txt) ------------- */
+
+@font-face {
+  font-family: "Poppins";
+  src: url("fonts/poppins-300.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Poppins";
+  src: url("fonts/poppins-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Poppins";
+  src: url("fonts/poppins-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Poppins";
+  src: url("fonts/poppins-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Poppins";
+  src: url("fonts/poppins-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---- tokens ------------------------------------------------------------ */
+
+:root {
+  --bn-accent: #237a80;          /* 5.0:1 on white. Same as primary in _pkgdown.yml. */
+  --bn-accent-soft: rgba(35, 122, 128, 0.12);
+  --bn-on-accent: #ffffff;       /* text on a solid accent fill: 5.0:1 */
+  --bn-line: rgba(16, 22, 32, 0.09);
+  --bn-ink-2: #495260;
+}
+[data-bs-theme="dark"] {
+  --bn-accent: #7fd3d8;          /* a light cyan, the hue of the logo teal. 9.0:1 on the dark background. */
+  --bn-accent-soft: rgba(127, 211, 216, 0.16);
+  /* White on this cyan is only 1.7:1, so a solid accent fill takes the ink
+     of the logo instead, at 9.6:1. */
+  --bn-on-accent: #17202a;
+  --bn-line: rgba(255, 255, 255, 0.1);
+  --bn-ink-2: #a3adba;
+}
+
+body {
+  font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  letter-spacing: -0.003em;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.navbar-brand {
+  font-family: "Poppins", sans-serif;
+  letter-spacing: -0.018em;
+}
+
+/* Poppins is large and round. The default pkgdown sizes are too big. */
+h1 {
+  font-size: 2.1rem;
+  font-weight: 650;
+}
+h2 {
+  font-size: 1.45rem;
+  font-weight: 600;
+  margin-top: 2.2rem;
+}
+h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+code,
+pre,
+kbd {
+  font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: 0.86em;
+}
+
+/* ---- navbar ------------------------------------------------------------ */
+
+.navbar {
+  border-bottom: 1px solid var(--bn-line);
+  box-shadow: 0 1px 3px rgba(16, 22, 32, 0.04);
+}
+.navbar-brand {
+  font-weight: 650;
+}
+.navbar .nav-link {
+  font-weight: 500;
+}
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+  color: var(--bn-accent) !important;
+}
+.navbar .nav-item {
+  margin-right: 0.35rem;
+}
+
+/* Dropdown menus. The default of pkgdown touches the navigation bar. It
+   looks like part of the page, and not like a menu. */
+.dropdown-menu {
+  border: 1px solid var(--bn-line);
+  border-radius: 0.6rem;
+  box-shadow: 0 10px 28px rgba(16, 22, 32, 0.14);
+  padding: 0.35rem;
+  margin-top: 0.4rem;
+  min-width: 15rem;
+}
+.dropdown-item {
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  white-space: normal;
+}
+.dropdown-item:hover,
+.dropdown-item:focus {
+  background-color: var(--bn-accent-soft);
+  color: inherit;
+}
+.dropdown-item.active,
+.dropdown-item:active {
+  background-color: var(--bn-accent);
+  color: var(--bn-on-accent);
+}
+[data-bs-theme="dark"] .dropdown-menu {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+/* ---- content ----------------------------------------------------------- */
+
+main a,
+.page-header a {
+  text-decoration-color: var(--bn-accent-soft);
+  text-underline-offset: 0.15em;
+}
+main a:hover {
+  color: var(--bn-accent);
+}
+
+blockquote {
+  border-left: 3px solid var(--bn-accent);
+  background: var(--bn-accent-soft);
+  padding: 0.75rem 1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: inherit;
+}
+
+/* The API summary in the README is a table. The reference pages also put
+   the argument descriptions in a table. The tables must thus look correct,
+   and not like the default Bootstrap style. */
+main table {
+  border: 1px solid var(--bn-line);
+  border-radius: 0.6rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  font-size: 0.94em;
+}
+main table th {
+  background: var(--bn-accent-soft);
+  font-weight: 600;
+  border-bottom: 1px solid var(--bn-line) !important;
+}
+main table td,
+main table th {
+  padding: 0.5rem 0.75rem;
+}
+
+main img {
+  max-width: 100%;
+  border: 1px solid var(--bn-line);
+  border-radius: 0.6rem;
+}
+/* But not the badges in the text. They are images also. */
+main p > img[src*="badge"],
+main p > a > img {
+  border: 0;
+  border-radius: 0;
+}
+/* And not the logo. It is a hexagon with transparent corners, so a
+   rectangular border draws a box around it. */
+main img.logo {
+  border: 0;
+  border-radius: 0;
+}
+
+/* ---- reference index --------------------------------------------------- */
+
+.template-reference-index h2 {
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--bn-line);
+}
+.ref-index .icon img {
+  border: 0;
+}
+/* The short description next to each function is the useful part of this
+   page. The default style makes it too small. */
+.ref-desc {
+  color: var(--bn-ink-2);
+}
+
+/* ---- sidebar / footer -------------------------------------------------- */
+
+.page-sidebar .sidebar-section {
+  border-top: 1px solid var(--bn-line);
+  padding-top: 0.9rem;
+  margin-top: 0.9rem;
+}
+.page-sidebar h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bn-ink-2);
+  margin-top: 0;
+}
+
+footer {
+  border-top: 1px solid var(--bn-line);
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  font-size: 0.9em;
+  color: var(--bn-ink-2);
+}
+
+/* ---- live demo --------------------------------------------------------- */
+
+/* The shinylive app of articles/live-demo.Rmd. The app has a sidebar and a
+   profile editor, so it gets the full width of the column and most of the
+   height of the window. */
+.unsaved-live-demo {
+  border: 1px solid var(--bn-line);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  margin: 1.5rem 0 0.5rem;
+}
+.unsaved-live-demo iframe {
+  display: block;
+  width: 100%;
+  height: 85vh;
+  min-height: 640px;
+  border: 0;
+}
+
+/* ---- search ------------------------------------------------------------ */
+
+#search-input {
+  border-radius: 0.5rem;
+  border: 1px solid var(--bn-line);
+}
+#search-input:focus {
+  border-color: var(--bn-accent);
+  box-shadow: 0 0 0 3px var(--bn-accent-soft);
+}
+
+@media (max-width: 767.98px) {
+  h1 {
+    font-size: 1.7rem;
+  }
+  main table {
+    display: block;
+    overflow-x: auto;
+  }
+}

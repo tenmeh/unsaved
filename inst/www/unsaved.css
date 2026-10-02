@@ -1,0 +1,49 @@
+/* Use the field's colour, with a text equivalent for assistive technology. */
+[data-unsaved="true"] .unsaved-marker::after,
+[data-unsaved="true"].unsaved-marker::after {
+  content: "";
+  display: inline-block;
+  width: .45em;
+  height: .45em;
+  margin-left: .5em;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+.unsaved-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.unsaved-badge { font-weight: 600; }
+.unsaved-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 45%);
+}
+.unsaved-dialog {
+  background: var(--bs-body-bg, white);
+  color: var(--bs-body-color, #222);
+  border-radius: .5rem;
+  padding: 1.5rem;
+  width: min(34rem, 92vw);
+}
+.unsaved-dialog h2 { margin-top: 0; font-size: 1.5rem; }
+.unsaved-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: 1rem;
+}
+.unsaved-dialog-actions button { padding: .4rem .75rem; }
+.unsaved-dialog [role="alert"]:not(:empty) { margin-top: .75rem; }

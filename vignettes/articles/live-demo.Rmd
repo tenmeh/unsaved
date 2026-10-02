@@ -1,0 +1,33 @@
+---
+title: "Live demo"
+output: rmarkdown::html_document
+---
+
+This is the showcase app of `unsaved`, running in your browser. There is no
+server: [shinylive](https://posit-dev.github.io/r-shinylive/) runs R and
+Shiny in the page with webR. Records stay in memory for this session only.
+
+Things to try:
+
+* Edit the name. Watch the dot, the badge and the saved/current value list.
+* Click **Discard changes**, then edit again and click **Save profile**.
+* Edit a field and click **Preferences**. Try **Keep editing**, **Discard
+  changes** and **Save and leave** in the dialog.
+* Click **Add a contact note**. Its first value is saved; edit it to see a dot.
+* Select Sam and click **Load another record**. Loading is disabled until
+  you save or discard. Visit **Saved profile** to see what the app stored.
+
+```{=html}
+<div class="unsaved-live-demo">
+  <iframe src="../demo/" title="unsaved live demo" loading="lazy"></iframe>
+</div>
+<p class="small text-muted">
+  <a href="../demo/" target="_blank" rel="noopener">Open the demo in a new tab</a>
+</p>
+```
+
+To run the same demo on your own machine:
+
+```r
+shiny::runApp(system.file("examples/demo", package = "unsaved"))
+```
