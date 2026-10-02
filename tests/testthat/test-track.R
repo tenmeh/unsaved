@@ -1,3 +1,10 @@
+test_that("the tracker signature keeps session last", {
+  expect_named(formals(unsaved_track), c(
+    "inputs", "guard_nav", "guard_unload", "on_save", "on_discard",
+    "compare", "text", "session"
+  ))
+})
+
 test_that("tracking requires a session and validates arguments", {
   expect_error(unsaved_track("x", session = NULL), "No Shiny session found", fixed = TRUE)
   session <- shiny::MockShinySession$new()

@@ -8,14 +8,14 @@
 #'   wording and may suppress the prompt without prior user interaction.
 #' @param on_save NULL or a function with no arguments. Returning without error,
 #'   except exactly FALSE, marks the inputs saved and permits navigation.
-#' @param text Text returned by unsaved_text(). A shared dialog uses the
-#'   text of its first involved tracker.
-#' @param compare NULL for tolerant comparison, one function for all inputs,
-#'   or a named list of functions keyed by tracked input id. Functions take
-#'   saved and current values and return a single non-NA logical for equality.
 #' @param on_discard NULL or a function with no arguments, called after each
 #'   discard. Errors become warnings. Inputs may not yet be restored; use
 #'   baseline() for the restored values.
+#' @param compare NULL for tolerant comparison, one function for all inputs,
+#'   or a named list of functions keyed by tracked input id. Functions take
+#'   saved and current values and return a single non-NA logical for equality.
+#' @param text Text returned by unsaved_text(). A shared dialog uses the
+#'   text of its first involved tracker.
 #' @param session The current Shiny session.
 #' @return An UnsavedTracker R6 object. is_dirty(), count() and changed() are
 #'   reactive. diff() is reactive and returns name, label, change, saved and
@@ -27,6 +27,8 @@
 #'   confirm(action) runs a function with no arguments at once when clean or
 #'   paused. Otherwise it asks for confirmation and runs the action after
 #'   discard or a successful save. Keep editing cancels the pending action.
+#'   Calling confirm() while a confirmation is pending warns and drops the
+#'   new action; it is not run or queued.
 #' @details Initial values are captured after the first reactive flush and
 #'   the client's field report, so password values never enter the baseline.
 #'   Listed inputs appearing later join the baseline with their first value.
@@ -52,9 +54,9 @@
 #' @export
 #' @importFrom R6 R6Class
 unsaved_track <- function(inputs, guard_nav = TRUE, guard_unload = TRUE,
-                          on_save = NULL,
-                          session = shiny::getDefaultReactiveDomain(),
-                          text = unsaved_text(), compare = NULL, on_discard = NULL) {
+                          on_save = NULL, on_discard = NULL, compare = NULL,
+                          text = unsaved_text(),
+                          session = shiny::getDefaultReactiveDomain()) {
   valid_inputs <- !missing(inputs) && is.character(inputs) &&
     length(inputs) > 0L && !anyNA(inputs) && all(nzchar(inputs))
   if (!valid_inputs) {
@@ -82,12 +84,16 @@ unsaved_track <- function(inputs, guard_nav = TRUE, guard_unload = TRUE,
     stop("`text` must be returned by unsaved_text().", call. = FALSE)
   }
   validate_compare(compare, inputs)
-  UnsavedTracker$new(inputs, guard_nav, guard_unload, on_save, session, text, compare, on_discard)
+  UnsavedTracker$new(
+    inputs = inputs, guard_nav = guard_nav, guard_unload = guard_unload,
+    on_save = on_save, on_discard = on_discard, compare = compare,
+    text = text, session = session
+  )
 }
 
 UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
   public = list(
-    initialize = function(inputs, guard_nav, guard_unload, on_save, session, text, compare, on_discard) {
+    initialize = function(inputs, guard_nav, guard_unload, on_save, on_discard, compare, text, session) {
       private$.text <- text
       private$.compare <- compare
       private$.on_discard <- on_discard
@@ -170,9 +176,11 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
         stop("`action` must be a function with no arguments.", call. = FALSE)
       }
       shiny::isolate({
-        if (private$.paused || !self$is_dirty()) {
+        if (!is.null(private$.pending)) {
+          warning("A confirmation is already open, so this action was not run.", call. = FALSE)
+        } else if (private$.paused || !self$is_dirty()) {
           action()
-        } else if (is.null(private$.pending)) {
+        } else {
           token <- basename(tempfile("confirm-"))
           private$.pending <- list(token = token, action = action)
           private$.session$sendCustomMessage("unsaved:confirm", list(

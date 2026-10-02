@@ -122,8 +122,9 @@ Clean or paused trackers run the function at once. A dirty tracker asks first.
 Keep editing cancels. Discard restores inputs, calls `on_discard`, then runs
 the action. Save and leave runs it only after a successful save. The action
 runs once on the server. While one confirmation is pending, further calls
-to that tracker do not replace it. Capture a record id before calling
-`confirm()` if the action must use the selection made at that time.
+to that tracker warn and drop the new action. The new action is not run or
+queued, and the first confirmation stays open. Capture a record id before
+calling `confirm()` if the action must use the selection made at that time.
 
 For a click in the browser, `unsaved_guard()` adds `data-unsaved-guard`:
 

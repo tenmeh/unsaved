@@ -68,6 +68,36 @@ test_that("confirm cancels, discards or saves once and rejects stale replies", {
   })
 })
 
+test_that("a second pending confirm warns and only the first action runs once", {
+  shiny::testServer(function(input, output, session) {
+    log <- capture_messages(session)
+    tracker <- unsaved_track("name")
+    state <- new.env()
+    state$first <- 0L
+    state$second <- 0L
+    first_action <- function() state$first <- state$first + 1L
+    second_action <- function() state$second <- state$second + 1L
+  }, {
+    session$setInputs(name = "Ada")
+    session$setInputs(name = "Grace")
+    tracker$confirm(first_action)
+    expect_warning(
+      tracker$confirm(second_action),
+      "A confirmation is already open, so this action was not run.",
+      fixed = TRUE
+    )
+    requests <- Filter(function(sent) sent$type == "unsaved:confirm", log$messages)
+    expect_length(requests, 1L)
+    expect_equal(state$first, 0L)
+    expect_equal(state$second, 0L)
+    request <- c(requests[[1]]$message, list(choice = "discard"))
+    session$setInputs(name = "Ada", unsaved_confirm_requested = request)
+    session$setInputs(unsaved_confirm_requested = request)
+    expect_equal(state$first, 1L)
+    expect_equal(state$second, 0L)
+  })
+})
+
 test_that("guard tags preserve their attributes and dependencies", {
   tag <- htmltools::tags$a(href = "#record", class = "link", "Record")
   guarded <- unsaved_guard(tag)
