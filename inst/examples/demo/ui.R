@@ -25,7 +25,7 @@ ui <- page_sidebar(
                 c("Ada Morgan" = "ada", "Sam Patel" = "sam")),
     uiOutput("load_control"),
     tags$p(class = "small text-muted",
-           "Save or discard before loading another record. ",
+           "Loading another record asks you to save or discard your edits. ",
            "Saved profiles last until you close this session.")
   ),
   card(
@@ -71,7 +71,7 @@ ui <- page_sidebar(
     card(
       card_header("What changed?"),
       tags$p(class = "small text-muted",
-             "Saved and current values, from tracker$changed()."),
+             "Saved and current values, from tracker$diff()."),
       uiOutput("changes")
     )
   )

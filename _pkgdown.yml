@@ -63,6 +63,9 @@ reference:
   - title: Track and protect changes
     contents:
       - unsaved_track
+      - unsaved_text
+      - unsaved_compare_text
+      - unsaved_guard
   - title: Show changes
     contents:
       - unsaved_badge

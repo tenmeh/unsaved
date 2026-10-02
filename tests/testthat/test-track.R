@@ -28,7 +28,7 @@ test_that("file paths never appear in configuration or restore payloads", {
       name = "example.csv", size = 10, type = "text/csv",
       datapath = "/private/server/upload.csv"
     )
-    session$setInputs(file = upload, name = "Ada")
+    session$setInputs(file = upload, name = "Ada", unsaved_password_ids = character())
     tracker$mark_saved()
     tracker$discard()
     expect_equal(tracker$baseline()$file, upload)
@@ -44,7 +44,8 @@ test_that("client tab metadata excludes even explicitly requested tab inputs", {
   shiny::testServer(function(input, output, session) {
     tracker <- unsaved_track(c("tabs", "name"))
   }, {
-    session$setInputs(tabs = "form", name = "Ada", unsaved_tab_ids = session$ns("tabs"))
+    session$setInputs(tabs = "form", name = "Ada", unsaved_tab_ids = session$ns("tabs"),
+                      unsaved_password_ids = list(ids = character()))
     session$setInputs(tabs = "other")
     expect_equal(tracker$changed(), character())
     tracker$mark_saved()
@@ -56,7 +57,7 @@ test_that("late tab metadata removes initial navigation values from saved snapsh
   shiny::testServer(function(input, output, session) {
     tracker <- unsaved_track(c("tabs", "name"))
   }, {
-    session$setInputs(tabs = "form", name = "Ada")
+    session$setInputs(tabs = "form", name = "Ada", unsaved_password_ids = list(ids = character()))
     session$setInputs(unsaved_tab_ids = session$ns("tabs"))
     expect_named(tracker$baseline(), "name")
     session$setInputs(tabs = "other")
@@ -134,7 +135,7 @@ test_that("baseline, save, pause, resume and independent trackers work", {
     first <- unsaved_track("x")
     second <- unsaved_track("y")
   }, {
-    session$setInputs(x = 1, y = "a")
+    session$setInputs(x = 1, y = "a", unsaved_password_ids = list(ids = character()))
     session$flushReact()
     expect_equal(first$baseline(), list(x = 1))
     session$setInputs(x = 2)

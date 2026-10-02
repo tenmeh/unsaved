@@ -38,7 +38,7 @@ ui <- fluidPage(
 
 tracked <- c(
   "name", "age", "choice", "checked", "select", "group",
-  "slider", "date", "range", "area", "password", "file"
+  "slider", "date", "range", "area", "file"
 )
 
 server <- function(input, output, session) {

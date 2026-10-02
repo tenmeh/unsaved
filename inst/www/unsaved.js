@@ -7,6 +7,7 @@
   var dialog = null;
   var unloadActive = false;
   var saveRequests = Object.create(null);
+  var passwordReports = Object.create(null);
   var selector = 'a[data-toggle="tab"],a[data-bs-toggle="tab"],button[data-toggle="tab"],'
     + 'button[data-bs-toggle="tab"],a[data-toggle="pill"],a[data-bs-toggle="pill"]';
 
@@ -21,6 +22,15 @@
       .map(function (el) { return el.id; })
       .filter(Boolean);
     window.Shiny.setInputValue(inputId, ids, {priority: "event"});
+  }
+
+  function reportPasswords(inputId) {
+    var ids = Array.from(document.querySelectorAll('input[type="password"][id]'))
+      .map(function (el) { return el.id; }).sort();
+    var key = JSON.stringify(ids);
+    if (passwordReports[inputId] === key) return;
+    passwordReports[inputId] = key;
+    window.Shiny.setInputValue(inputId, {ids: ids}, {priority: "event"});
   }
 
   function dirtyIds() {
@@ -72,7 +82,8 @@
         var text = document.createElement("span");
         text.className = "unsaved-sr";
         text.id = "unsaved-description-" + (++serial);
-        text.textContent = "(unsaved)";
+        var owner = Object.keys(states).find(function (key) { return states[key].ids.indexOf(id) !== -1; });
+        text.textContent = states[owner].text.unsaved;
         container.appendChild(text);
         el.setAttribute("aria-describedby", ((el.getAttribute("aria-describedby") || "") + " " + text.id).trim());
         marks.set(id, {el: el, container: container, label: label, text: text});
@@ -118,7 +129,8 @@
   function restore(inputs) {
     Object.keys(inputs).forEach(function (id) {
       var el = document.getElementById(id);
-      if (!el || !window.jQuery || el.classList.contains("shiny-tab-input") || el.type === "file") return;
+      if (!el || !window.jQuery || el.classList.contains("shiny-tab-input") ||
+          el.type === "file" || el.type === "password") return;
       var $el = window.jQuery(el);
       var binding = $el.data("shiny-input-binding");
       if (!binding) return;
@@ -129,19 +141,34 @@
         binding.receiveMessage(el, {value: value});
       }
       $el.trigger("change");
+      // Send the restored value before a confirmed server action runs.
+      var type = binding.getType(el);
+      var inputId = type ? id + ":" + type : id;
+      window.Shiny.setInputValue(inputId, binding.getValue(el), {priority: "event"});
     });
   }
 
-  function closeDialog() {
+  function confirmReply(choice) {
+    if (!dialog || !dialog.confirmation) return;
+    var request = dialog.confirmation;
+    window.Shiny.setInputValue(states[request.instance].confirmInput, {
+      instance: request.instance, token: request.token, choice: choice, at: Date.now()
+    }, {priority: "event"});
+  }
+
+  function closeDialog(cancel) {
     if (!dialog) return;
+    if (cancel !== false) confirmReply("keep");
     var target = dialog.target;
     dialog.backdrop.remove();
     dialog = null;
-    if (target.isConnected) target.focus();
+    if (target && target.isConnected) target.focus();
   }
 
-  function navigate(target) {
-    closeDialog();
+  function navigate(target, choice) {
+    confirmReply(choice || "save");
+    closeDialog(false);
+    if (!target) return;
     bypass = true;
     try {
       target.click();
@@ -158,16 +185,24 @@
       dialog.waiting = false;
       dialog.discard.disabled = false;
       dialog.save.disabled = false;
-      dialog.save.textContent = "Save and leave";
-      dialog.alert.textContent = "Could not save. Your changes are still here.";
+      dialog.save.textContent = dialog.text.save;
+      dialog.alert.textContent = dialog.text.save_failed;
       return;
     }
     attempt.remaining.delete(message.instance);
     if (attempt.remaining.size === 0) navigate(dialog.target);
   }
 
-  function showDialog(target, instances) {
-    if (dialog) return;
+  function showDialog(target, instances, confirmation) {
+    if (dialog) {
+      if (confirmation) {
+        window.Shiny.setInputValue(states[confirmation.instance].confirmInput, {
+          instance: confirmation.instance, token: confirmation.token, choice: "keep", at: Date.now()
+        }, {priority: "event"});
+      }
+      return;
+    }
+    var text = states[instances[0]].text;
     var backdrop = document.createElement("div");
     backdrop.className = "unsaved-backdrop";
     var panel = document.createElement("div");
@@ -176,7 +211,7 @@
     panel.setAttribute("aria-modal", "true");
     var title = document.createElement("h2");
     title.id = "unsaved-dialog-title-" + (++serial);
-    title.textContent = "Unsaved changes";
+    title.textContent = text.title;
     panel.setAttribute("aria-labelledby", title.id);
     var count = new Set();
     instances.forEach(function (id) {
@@ -185,22 +220,27 @@
       });
     });
     var message = document.createElement("p");
-    message.textContent = "You have " + count.size + " unsaved change" + (count.size === 1 ? "" : "s") + ".";
+    message.textContent = text.message.replace(/\{n\}/g, count.size).replace(/\{s\}/g, count.size === 1 ? "" : "s");
     var keep = document.createElement("button");
     var discard = document.createElement("button");
     keep.type = "button";
     discard.type = "button";
     keep.className = "btn btn-secondary";
     discard.className = "btn btn-danger";
-    keep.textContent = "Keep editing";
-    discard.textContent = "Discard changes";
+    keep.textContent = text.keep;
+    discard.textContent = text.discard;
     keep.addEventListener("click", closeDialog);
     discard.addEventListener("click", function () {
       // Cached baselines allow explicit discard while the server is busy.
       instances.forEach(function (id) {
         restore(states[id].inputs);
+        if (!confirmation) {
+          window.Shiny.setInputValue(states[id].discardInput, {
+            instance: id, at: Date.now()
+          }, {priority: "event"});
+        }
       });
-      navigate(target);
+      navigate(target, "discard");
     });
     // The buttons sit in one row that wraps as a whole on narrow screens.
     var actions = document.createElement("div");
@@ -215,13 +255,13 @@
       save = document.createElement("button");
       save.type = "button";
       save.className = "btn btn-primary";
-      save.textContent = "Save and leave";
+      save.textContent = text.save;
       save.addEventListener("click", function () {
         if (!dialog || dialog.waiting) return;
         dialog.waiting = true;
         discard.disabled = true;
         save.disabled = true;
-        save.textContent = "Saving...";
+        save.textContent = text.saving;
         alert.textContent = "";
         keep.focus();
         var attempt = {dialog: dialog, remaining: new Set(instances)};
@@ -231,7 +271,7 @@
           saveRequests[id].push(attempt);
           window.Shiny.setInputValue(states[id].saveInput || "unsaved_save_requested", {
             instance: id,
-            target: target.id || target.getAttribute("data-value") || target.getAttribute("href"),
+            target: target ? target.id || target.getAttribute("data-value") || target.getAttribute("href") : null,
             at: Date.now()
           }, {priority: "event"});
         });
@@ -255,7 +295,10 @@
       }
     });
     document.body.appendChild(backdrop);
-    dialog = {backdrop: backdrop, target: target, discard: discard, save: save, alert: alert, waiting: false};
+    dialog = {
+      text: text, backdrop: backdrop, target: target, discard: discard,
+      save: save, alert: alert, waiting: false, confirmation: confirmation
+    };
     keep.focus();
   }
 
@@ -266,7 +309,7 @@
   }
 
   function guardNavigation(e, target) {
-    if (bypass || !target || isActive(target)) return;
+    if (bypass || !target || (target.matches(selector) && isActive(target))) return;
     var instances = Object.keys(states).filter(function (id) {
       return states[id].guardNav && states[id].ids.length;
     });
@@ -275,7 +318,7 @@
     e.stopPropagation();
     if (!dialog) {
       instances.forEach(function (id) {
-        window.Shiny.setInputValue("unsaved_nav_blocked", {
+        window.Shiny.setInputValue(states[id].navInput, {
           instance: id,
           target: target.id || target.getAttribute("data-value") || target.getAttribute("href"),
           at: Date.now()
@@ -287,7 +330,7 @@
 
   document.addEventListener("click", function (e) {
     if (!(e.target instanceof Element)) return;
-    guardNavigation(e, e.target.closest(selector));
+    guardNavigation(e, e.target.closest(selector + ',[data-unsaved-guard]'));
   }, true);
 
   // Bootstrap 5 emits a native event; Bootstrap 3 uses jQuery events.
@@ -306,8 +349,14 @@
       current.guardUnload = message.guardUnload;
       current.canSave = message.canSave;
       current.saveInput = message.saveInput;
+      current.discardInput = message.discardInput;
+      current.navInput = message.navInput;
+      current.confirmInput = message.confirmInput;
+      current.text = message.text;
       current.tabInput = message.tabInput || "unsaved_tab_ids";
+      current.passwordInput = message.passwordInput;
       reportTabs(current.tabInput);
+      reportPasswords(current.passwordInput);
       reconcile();
     });
     window.Shiny.addCustomMessageHandler("unsaved:state", function (message) {
@@ -319,16 +368,29 @@
       restore(message.inputs || {});
     });
     window.Shiny.addCustomMessageHandler("unsaved:saved", saveReply);
+    window.Shiny.addCustomMessageHandler("unsaved:confirm", function (message) {
+      showDialog(null, [message.instance], message);
+    });
     window.jQuery(document).on("shiny:bound", function () {
       var inputs = new Set();
       Object.keys(states).forEach(function (id) {
         if (states[id].tabInput) inputs.add(states[id].tabInput);
       });
       inputs.forEach(reportTabs);
+      Object.keys(states).forEach(function (id) {
+        if (states[id].passwordInput) reportPasswords(states[id].passwordInput);
+      });
+    });
+    window.jQuery(document).on("shiny:connected", function () {
+      passwordReports = Object.create(null);
+      Object.keys(states).forEach(function (id) {
+        if (states[id].passwordInput) reportPasswords(states[id].passwordInput);
+      });
     });
     window.jQuery(document).on("shiny:disconnected", function () {
       states = Object.create(null);
       saveRequests = Object.create(null);
+      passwordReports = Object.create(null);
       closeDialog();
       reconcile();
     });
