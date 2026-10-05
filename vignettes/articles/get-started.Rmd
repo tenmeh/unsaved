@@ -76,3 +76,90 @@ to turn it off. The live demo runs in an iframe; open it in a new tab to
 try the browser warning.
 
 [Try the profile editor](live-demo.html).
+
+## Field labels and the change list
+
+Give `inputs` names for the labels shown in a review screen:
+
+```r
+tracker <- unsaved_track(c("Full name" = "name", Role = "role"))
+output$changes <- renderTable(tracker$diff()[, c("label", "change")])
+```
+
+`diff()` is reactive. It returns `name`, `label`, `change`, `saved` and
+`current`, in input order. The values are list columns. Empty names use the
+id, and duplicate ids are an error. Password fields are never tracked, so
+their values cannot enter a snapshot, browser cache or change summary.
+A reported password id stays excluded even after its widget is removed.
+
+## Choose text and comparison rules
+
+```r
+tracker <- unsaved_track("name",
+  text = unsaved_text(title = "Profile changes", keep = "Stay"),
+  compare = list(name = unsaved_compare_text()),
+  on_discard = function() showNotification("Changes discarded")
+)
+```
+
+`unsaved_text()` controls the title, message, button text, saving text,
+failure message and screen-reader text. `{n}` and `{s}` are message
+placeholders. A dialog shared by several trackers uses the first one's text.
+`unsaved_compare_text()` trims outer whitespace and treats empty text as
+NULL; either rule can be turned off. A comparison can be NULL, one function
+for every input, or a named list by input id. Each function takes saved and
+current values and returns one non-missing logical for equality.
+
+`on_discard()` runs after every server or dialog discard. Errors become
+warnings. After a direct `discard()` call, inputs may not yet have returned
+from the browser; use `baseline()` for saved values.
+
+## Protect loading and other actions
+
+```r
+observeEvent(input$load, {
+  record_id <- input$record
+  tracker$confirm(function() load_record(record_id))
+})
+```
+
+Clean or paused trackers run the action at once. Dirty trackers open the
+dialog. Keep editing cancels. Discard restores, calls `on_discard`, then
+runs the action once. Save and leave runs it only after a successful save.
+Only one confirmation per tracker can be pending. Calling `confirm()` again
+while waiting warns and drops the new action without running or queuing it.
+The first confirmation stays open. Explicit confirmation works even with
+`guard_nav = FALSE`.
+
+For browser clicks, wrap a tag in `unsaved_guard()`, or add the
+`data-unsaved-guard` attribute yourself:
+
+```r
+unsaved_guard(actionButton("delete", "Delete draft"))
+unsaved_guard(tags$a(href = "/another-page", "Another page"))
+```
+
+Modal close buttons can use the same attribute. Dirty trackers with
+`guard_nav = TRUE` block the click; discard or a successful save replays it.
+
+## Modules
+
+Create the tracker inside `moduleServer()` with local input ids. Do not
+prefix them with `session$ns()`. Save, discard and navigation events stay
+in that module. A badge counts distinct changed fields across modules.
+
+## Use with rewind
+
+`rewind` is an optional package for undo and redo:
+
+```r
+rewind::rewind_enable(inputs = "name")
+tracker <- unsaved_track("name")
+observeEvent(input$undo, rewind::rewind_undo())
+observeEvent(input$redo, rewind::rewind_redo())
+```
+
+Undoing to saved values clears dirty state. Redo makes the form dirty again.
+Discard is a normal edit, so rewind can undo it. For text, slow typing makes
+several history steps; `updateOn = "blur"` gives one per edit. Ctrl+Z inside
+a text box uses the browser's own undo, so use rewind's controls or API.

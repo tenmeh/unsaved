@@ -124,7 +124,7 @@ test_that("every restorable demo widget returns to its baseline", {
   app <- make_browser()
   ids <- c(
     "name", "age", "choice", "checked", "select", "group", "slider",
-    "date", "range", "area", "password"
+    "date", "range", "area"
   )
   baseline <- lapply(ids, function(id) app$get_value(input = id))
   names(baseline) <- ids

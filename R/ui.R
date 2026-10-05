@@ -31,3 +31,19 @@ unsaved_badge <- function(label = "{n} unsaved change{s}", class = NULL) {
   )
   htmltools::attachDependencies(badge, unsaved_dependency())
 }
+
+#' Guard a Click Against Unsaved Changes
+#' @param tag An htmltools tag, such as an action button, modal close button
+#'   or plain link. Dirty trackers with guard_nav = TRUE guard the click.
+#' @return The tag with the data-unsaved-guard attribute and client assets.
+#' @details Keep editing cancels the click. Discard or a successful save
+#'   replays it once. Use tracker$confirm(action) for an action on the server.
+#' @examples
+#' unsaved_guard(shiny::actionButton("delete", "Delete draft"))
+#' unsaved_guard(htmltools::tags$a(href = "#details", "Details"))
+#' @export
+unsaved_guard <- function(tag) {
+  if (!inherits(tag, "shiny.tag")) stop("`tag` must be an htmltools tag.", call. = FALSE)
+  tag <- htmltools::tagAppendAttributes(tag, `data-unsaved-guard` = "")
+  htmltools::attachDependencies(tag, unsaved_dependency(), append = TRUE)
+}

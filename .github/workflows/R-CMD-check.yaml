@@ -18,6 +18,10 @@ jobs:
 
     name: ${{ matrix.config.os }} (${{ matrix.config.r }})
 
+    # A full run takes under 20 minutes. Without a limit, a test that hangs
+    # holds the runner for GitHub's 6-hour maximum before it is cancelled.
+    timeout-minutes: 45
+
     strategy:
       fail-fast: false
       matrix:

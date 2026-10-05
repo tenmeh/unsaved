@@ -1,6 +1,7 @@
 # unsaved showcase -----------------------------------------------------------
 # Run shiny::runApp(system.file("examples/demo", package = "unsaved")).
 # All records are fictional and stay in memory for this session only.
+# The showcase needs Shiny 1.7.4 or later because of bslib.
 library(shiny)
 library(bslib)
 library(unsaved)

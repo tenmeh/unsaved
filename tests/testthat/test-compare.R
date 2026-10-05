@@ -44,3 +44,33 @@ test_that("eligibility filters precede exclusions", {
   expect_named(snapshot_inputs(a, c("x", "y", "button"), "y"), "x")
   expect_equal(snapshot_inputs(list()), list())
 })
+
+test_that("custom comparison supports defaults, one function and per-input functions", {
+  saved <- list(name = "Ada", other = "Ada", n = 1)
+  current <- list(name = " Ada ", other = " Ada ", n = 1 + 1e-10)
+  expect_equal(changed_inputs(saved, current, NULL), c("name", "other"))
+  expect_equal(changed_inputs(saved, current, unsaved_compare_text()), character())
+  expect_equal(changed_inputs(saved, current, list(name = unsaved_compare_text())), "other")
+  expect_equal(changed_inputs(list(), list(), identical), character())
+  for (bad in list(NULL, NA, logical(), c(TRUE, FALSE), 1, "yes")) {
+    compare <- function(saved, current) bad
+    expect_error(changed_inputs(saved, current, compare), "input `name`", fixed = TRUE)
+  }
+})
+
+test_that("text comparison handles empty, missing, whitespace and non-text values", {
+  compare <- unsaved_compare_text()
+  expect_equal(compare(NULL, ""), TRUE)
+  expect_equal(compare("  ", NULL), TRUE)
+  expect_equal(compare(" Ada ", "Ada"), TRUE)
+  expect_equal(compare(c(" Ada ", NA), c("Ada", NA)), TRUE)
+  expect_equal(compare(1, 1 + 1e-10), TRUE)
+  expect_equal(compare(list(a = 1), list(a = 1)), TRUE)
+  expect_equal(unsaved_compare_text(trim = FALSE)(" Ada ", "Ada"), FALSE)
+  expect_equal(unsaved_compare_text(empty_is_null = FALSE)("", NULL), FALSE)
+  expect_equal(compare(NA_character_, ""), FALSE)
+  for (bad in list(NULL, NA, c(TRUE, FALSE), 1)) {
+    expect_error(unsaved_compare_text(trim = bad), "logical values")
+    expect_error(unsaved_compare_text(empty_is_null = bad), "logical values")
+  }
+})

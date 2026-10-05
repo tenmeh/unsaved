@@ -9,11 +9,15 @@ unsaved_track(
   guard_nav = TRUE,
   guard_unload = TRUE,
   on_save = NULL,
+  on_discard = NULL,
+  compare = NULL,
+  text = unsaved_text(),
   session = shiny::getDefaultReactiveDomain()
 )
 }
 \arguments{
-\item{inputs}{Required non-empty character vector of input identifiers.}
+\item{inputs}{Required non-empty character vector of unique input ids.
+Optional names are field labels; an empty name uses the id.}
 
 \item{guard_nav}{Guard clicks, keyboard and programmatic tab navigation,
 including updateTabsetPanel(). To navigate while dirty, call mark_saved(),
@@ -25,27 +29,50 @@ wording and may suppress the prompt without prior user interaction.}
 \item{on_save}{NULL or a function with no arguments. Returning without error,
 except exactly FALSE, marks the inputs saved and permits navigation.}
 
+\item{on_discard}{NULL or a function with no arguments, called after each
+discard. Errors become warnings. Inputs may not yet be restored; use
+baseline() for the restored values.}
+
+\item{compare}{NULL for tolerant comparison, one function for all inputs,
+or a named list of functions keyed by tracked input id. Functions take
+saved and current values and return a single non-NA logical for equality.}
+
+\item{text}{Text returned by unsaved_text(). A shared dialog uses the
+text of its first involved tracker.}
+
 \item{session}{The current Shiny session.}
 }
 \value{
 An UnsavedTracker R6 object. is_dirty(), count() and changed() are
-reactive. baseline() returns the saved snapshot without a dependency.
+reactive. diff() is reactive and returns name, label, change, saved and
+current columns, with the values in list columns, in input order.
+baseline() returns the saved snapshot without a dependency.
 mark_saved() replaces it after the app saves. discard() restores inputs
 through client bindings. pause() disables tracking and guards; resume()
 compares current inputs with the retained baseline.
+confirm(action) runs a function with no arguments at once when clean or
+paused. Otherwise it asks for confirmation and runs the action after
+discard or a successful save. Keep editing cancels the pending action.
+Calling confirm() while a confirmation is pending warns and drops the
+new action; it is not run or queued.
 }
 \description{
 Track Unsaved Input Changes
 }
 \details{
-The initial values are captured on the first reactive flush.
+Initial values are captured after the first reactive flush and
+the client's field report, so password values never enter the baseline.
 Listed inputs appearing later join the baseline with their first value.
 Removed inputs are ignored; returning inputs use their retained baseline.
 Tab metadata filters navigation inputs, including reports arriving after
 the first flush. File upload values are never sent in client snapshots.
+Password fields are never tracked. Cached values wait for the client's
+password report, and a late report removes an input from the snapshot.
+A reported password id stays excluded for the life of the tracker,
+including after the widget is removed or its id is reused.
 Save and leave waits for a server round trip. Errors are caught without
 sending their messages to the browser. Discard sends JSON, so exotic R
-objects may not round-trip. Module ids are namespaced; module use is untested.
+objects may not round-trip. Use module-local ids inside moduleServer().
 }
 \examples{
 if (interactive()) {

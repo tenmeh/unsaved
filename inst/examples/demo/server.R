@@ -17,7 +17,13 @@ server <- function(input, output, session) {
     records(current)
     invisible(TRUE)
   }
-  tracker <- unsaved_track(names(field_labels), on_save = save_profile)
+  text_ids <- c("name", "location", "bio", "contact")
+  text_compare <- setNames(rep(list(unsaved_compare_text()), length(text_ids)), text_ids)
+  tracker <- unsaved_track(
+    setNames(names(field_labels), unname(field_labels)),
+    on_save = save_profile, compare = text_compare,
+    on_discard = function() showNotification("Changes discarded")
+  )
 
   observeEvent(input$save, {
     save_profile()
@@ -43,26 +49,29 @@ server <- function(input, output, session) {
   # the button, and actionButton(disabled =) needs Shiny 1.10 or later.
   output$load_control <- renderUI({
     button <- actionButton("load", "Load another record")
-    if (tracker$is_dirty() || loading()) {
+    if (loading()) {
       button <- tagAppendAttributes(button, disabled = NA)
     }
     button
   })
 
-  # The server also checks dirty state, so a stale click cannot lose edits.
+  # Confirm the action before replacing the current record.
   # Wait for the browser to echo every updated input before setting a baseline.
   observeEvent(input$load, {
-    req(!tracker$is_dirty(), !loading(), input$record %in% names(records()))
-    loading(TRUE)
-    tracker$pause()
-    active(input$record)
-    record <- records()[[active()]]
-    updateTextInput(session, "name", value = record$name)
-    updateSelectInput(session, "role", selected = record$role)
-    updateTextInput(session, "location", value = record$location)
-    updateTextAreaInput(session, "bio", value = record$bio)
-    updateCheckboxInput(session, "newsletter", value = record$newsletter)
-    if (contact_visible()) updateTextInput(session, "contact", value = record$contact)
+    req(!loading(), input$record %in% names(records()))
+    record_id <- input$record
+    tracker$confirm(function() {
+      loading(TRUE)
+      tracker$pause()
+      active(record_id)
+      record <- records()[[active()]]
+      updateTextInput(session, "name", value = record$name)
+      updateSelectInput(session, "role", selected = record$role)
+      updateTextInput(session, "location", value = record$location)
+      updateTextAreaInput(session, "bio", value = record$bio)
+      updateCheckboxInput(session, "newsletter", value = record$newsletter)
+      if (contact_visible()) updateTextInput(session, "contact", value = record$contact)
+    })
   })
   observe({
     req(loading())
@@ -84,14 +93,14 @@ server <- function(input, output, session) {
     paste(value, collapse = ", ")
   }
   output$changes <- renderUI({
-    ids <- tracker$changed()
-    if (!length(ids)) return(tags$p("No unsaved changes. Try editing a field."))
-    saved <- tracker$baseline()
-    tagList(lapply(ids, function(id) {
+    changes <- tracker$diff()
+    if (!nrow(changes)) return(tags$p("No unsaved changes. Try editing a field."))
+    tagList(lapply(seq_len(nrow(changes)), function(i) {
       tags$section(class = "border-bottom pb-3 mb-3",
-        tags$strong(field_labels[[id]]),
-        tags$div(class = "small text-muted", "Saved: ", display_value(saved[[id]])),
-        tags$div("Current: ", display_value(input[[id]]))
+        tags$strong(changes$label[i]),
+        tags$div(class = "small text-muted", changes$change[i]),
+        tags$div("Saved: ", display_value(changes$saved[[i]])),
+        tags$div("Current: ", display_value(changes$current[[i]]))
       )
     }))
   })

@@ -49,21 +49,30 @@ Run a larger demo with
 ## The tracker
 
 `unsaved_track(inputs)` returns a tracker. `inputs` is required: list the ids of
-the inputs that make up your form. Action buttons, tab selections and the
-package's own inputs are never tracked, even if you list them.
+the inputs that make up your form. Optional names are field labels, for example
+`unsaved_track(c("Full name" = "name", Role = "role"))`. Ids must be unique.
+Action buttons, tab selections and the package's own inputs are never tracked.
+Password fields are never tracked because their values must stay out of saved
+snapshots, browser caches and change summaries, even if you list their ids.
+A reported password id stays excluded for the life of its tracker.
 
 | Method | What it does |
 |---|---|
 | `is_dirty()` | Reactive. `TRUE` when at least one input differs from its saved value. |
 | `count()` | Reactive. The number of changed inputs. |
 | `changed()` | Reactive. The ids of the changed inputs. |
+| `diff()` | Reactive. A change summary with field labels and saved/current list columns. |
 | `baseline()` | The saved values, as a named list. Not reactive. |
 | `mark_saved()` | Call after your app saves. The current values become the saved values. |
 | `discard()` | Put every input back to its saved value. |
 | `pause()`, `resume()` | Stop and restart tracking, markers and guards. |
+| `confirm(action)` | Run a function now if clean or paused; otherwise ask before running it. |
 
-Use `is_dirty()` to protect your own destructive actions, for example to
-disable a "Load another record" button while there are unsaved changes.
+Use `diff()` to build a review screen. It returns `name`, `label`, `change`,
+`saved` and `current`, in the order of `inputs`, with one row per changed field.
+The last two columns hold the original values as lists. Short values appear
+as `"Ada -> Grace"`; longer values use short descriptions. A clean tracker
+returns the same columns with no rows.
 
 An input that appears after the app starts, for example from `renderUI()`,
 takes its first value as its saved value. Only a later edit counts as a change.
@@ -97,7 +106,68 @@ server while dirty, call `mark_saved()`, `discard()` or `pause()` first. Use
 `guard_nav = FALSE` to turn the guard off.
 
 Each blocked change also sets the input `unsaved_nav_blocked`, so your app can
-react to it.
+react to it. Inside a module this input uses the module's namespace.
+
+## Guard other actions
+
+On the server, wrap a destructive action in `confirm()`:
+
+```r
+observeEvent(input$load, {
+  tracker$confirm(function() load_record(input$record))
+})
+```
+
+Clean or paused trackers run the function at once. A dirty tracker asks first.
+Keep editing cancels. Discard restores inputs, calls `on_discard`, then runs
+the action. Save and leave runs it only after a successful save. The action
+runs once on the server. While one confirmation is pending, further calls
+to that tracker warn and drop the new action. The new action is not run or
+queued, and the first confirmation stays open. Capture a record id before
+calling `confirm()` if the action must use the selection made at that time.
+
+For a click in the browser, `unsaved_guard()` adds `data-unsaved-guard`:
+
+```r
+unsaved_guard(actionButton("delete", "Delete draft"))
+unsaved_guard(tags$a(href = "/another-page", "Another page"))
+```
+
+You can also add the attribute yourself, including on a modal close button.
+Dirty trackers with `guard_nav = TRUE` block the click. Discard or a successful
+save replays it once. Keep editing cancels it. Server confirmation works
+independently of `guard_nav`.
+
+## Text, comparison and discard callbacks
+
+Set `text = unsaved_text(title = "Profile changes", keep = "Stay")` to change
+dialog text. The message template accepts `{n}` and `{s}`. The helper also
+sets `discard`, `save`, `saving`, `save_failed` and screen-reader `unsaved`
+text. A shared dialog uses the first involved tracker's text.
+
+Set `compare = unsaved_compare_text()` to ignore outer whitespace and treat
+empty text as NULL. Set `trim = FALSE` or `empty_is_null = FALSE` to turn
+either rule off. A custom function takes saved and current values and returns
+one non-missing logical: TRUE means equal. Use a named list to apply functions
+by input id, for example `compare = list(name = unsaved_compare_text())`.
+Other fields use the default comparison, including its numeric tolerance.
+
+`on_discard = function() ...` runs after server or dialog discard. Errors
+become warnings. For a direct `discard()` call the restored inputs may not
+have reached the server yet; use `tracker$baseline()` for their saved values.
+
+## Modules and rewind
+
+Inside `moduleServer()`, give `unsaved_track()` local input ids, without
+`session$ns()`. Markers, saves, discards and event inputs use that module's
+namespace. Multiple modules can share the count badge.
+
+`rewind` is optional. Call `rewind::rewind_enable(inputs = ...)` alongside
+`unsaved_track()` to add undo and redo. Undoing to the saved values clears
+dirty state; redo restores it. Discard is an edit and can itself be undone.
+For text, slow typing can make several history steps; use `updateOn = "blur"`
+if you want one step per edit. Undo with rewind's controls or API: Ctrl+Z
+inside a text box uses the browser's own undo.
 
 ## Limits
 
@@ -110,8 +180,6 @@ react to it.
   may not come back exactly. A file input cannot get its file back.
 - An input inside a `renderUI()` that has not rendered yet is not tracked until
   it appears.
-- The tracker is made for the top-level server function. Ids in modules go
-  through `session$ns()`, but module use is not tested.
 
 ## For CSS
 

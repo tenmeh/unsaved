@@ -10,6 +10,9 @@ marker_count <- function(app) {
 }
 
 capture_messages <- function(session) {
+  # Emulate the initial client report; do not flush module inputs through root.
+  session$setInputs(unsaved_password_ids = character())
+  session <- session$rootScope()
   log <- new.env(parent = emptyenv())
   log$messages <- list()
   if (bindingIsLocked("sendCustomMessage", session)) {
