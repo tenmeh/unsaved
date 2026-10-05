@@ -65,12 +65,16 @@ test_that("Bootstrap 5 arrow keys and programmatic shows are guarded", {
   app <- make_navigation_app(bs5 = TRUE)
   app$set_inputs(name = "Grace")
   app$wait_for_idle()
-  app$run_js("document.querySelector('a[data-value=form]').focus()")
+  # Send the key to the tab link itself. On a slow runner focus() may not take,
+  # and a key sent to document.activeElement would then miss the tab list.
   app$run_js("
-    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+    var link = document.querySelector('a[data-value=form]');
+    link.focus();
+    link.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'ArrowRight', bubbles: true, cancelable: true
     }));
   ")
+  app$wait_for_js("document.querySelector('.unsaved-dialog') !== null", timeout = 10000)
   app$wait_for_idle()
   expect_equal(app$get_value(input = "tabs"), "form")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog') !== null"), TRUE)
