@@ -381,12 +381,6 @@
         if (states[id].passwordInput) reportPasswords(states[id].passwordInput);
       });
     });
-    window.jQuery(document).on("shiny:connected", function () {
-      passwordReports = Object.create(null);
-      Object.keys(states).forEach(function (id) {
-        if (states[id].passwordInput) reportPasswords(states[id].passwordInput);
-      });
-    });
     window.jQuery(document).on("shiny:disconnected", function () {
       states = Object.create(null);
       saveRequests = Object.create(null);

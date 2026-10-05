@@ -1,4 +1,7 @@
 test_that("late password reports scrub baselines, diff and every client payload", {
+  # Act out a real browser, which reports password fields after the first
+  # values; testServer() would otherwise start tracking at once.
+  withr::local_options(unsaved.wait_for_browser = TRUE)
   shiny::testServer(function(input, output, session) {
     log <- capture_messages(session)
     # Simulate an app whose first values precede the client metadata.
