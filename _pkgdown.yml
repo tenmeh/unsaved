@@ -5,20 +5,55 @@ template:
   light-switch: true
   default-theme: light
   bslib:
-    # The teal of the unsaved-changes dot. As a link colour it gives 5.0:1 on white,
-    # and a link must have 4.5:1 to pass WCAG AA. In the dark mode Bootstrap
-    # lightens the link colour by 40%, which gives 6.3:1 on the dark
-    # background. It is the lightest teal that passes in both modes. #2A8A90
-    # looks almost the same and fails, at 4.1:1.
-    primary: "#237A80"
+    # The ground and the ink come from the blog of the author, so that the
+    # documentation and the blog are one family: warm bone paper, and a
+    # blue-black ink. In the dark mode they are the charcoal of the logo and
+    # a warm cream. Bootstrap makes its own tints and shades from these
+    # values, so they are set here and not only in extra.css, which holds
+    # the same values in its tokens. Change both places together.
+    bg: "#f4efe4"
+    fg: "#17202a"
+    body-bg-dark: "#1f1d1b"
+    body-color-dark: "#ece5d6"
+    border-color: "#cfc5b1"
+    border-color-dark: "#3d3833"
+    # A dark teal, of the hue of the change dot of the logo. It is NOT the teal of the
+    # logo itself (#237A80). As a link colour on the paper that one has a
+    # contrast of 4.4:1, and a link must have 4.5:1 to pass WCAG AA. On
+    # white it had 5.0:1, which is why the first version of this site used
+    # it.
+    #
+    # The paper is darker than white, so the teal of the logo fails on it.
+    # The pills and the active tab also put the accent on a 12% tint of
+    # itself, and there #237A80 is only 3.8:1. #1B6A70 gives 5.5:1 on the
+    # paper (#F4EFE4), 5.9:1 on the cards and the code blocks (#FBF8F1), and
+    # 4.6:1 on the tint of the pills. It is the lightest teal of this hue
+    # that passes on the tint, which is the hardest of the three grounds.
+    #
+    # The dark mode does not derive its link colour from this one any more.
+    # Bootstrap would lighten it by 40%, which gives a dusty grey-teal
+    # (#76A6A9) that looks little like the logo. The teal of the logo itself
+    # is too dark to read on the charcoal (3.3:1), so the dark mode takes a
+    # lighter teal of the same hue, #5CC4CA. It gives 8.2:1 on the charcoal (#1F1D1B), 7.4:1 on
+    # the cards (#282523) and 5.4:1 on its 16% tint.
+    primary: "#1B6A70"
+    link-color-dark: "#5CC4CA"
     # Set as plain Sass variables rather than through bslib's font helpers:
-    # Poppins is served from pkgdown/assets/fonts by @font-face in extra.css,
-    # so there is nothing for bslib to fetch or bundle.
-    font-family-base: "Poppins, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    headings-font-family: "Poppins, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    font-family-monospace: "'JetBrains Mono', 'SF Mono', 'Cascadia Mono', Consolas, monospace"
-    headings-font-weight: 600
-    border-radius: "0.6rem"
+    # Recursive is served from pkgdown/assets/fonts by @font-face in
+    # extra.css, so there is nothing for bslib to fetch or bundle. One family
+    # does all the work, as on the blog: the plain style for text and
+    # headings, and the mono axis of the same file for code (extra.css turns
+    # it on). The mono stack after it is for the moment before the font
+    # loads, and for a browser that blocks it.
+    font-family-base: "Recursive, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    headings-font-family: "Recursive, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-family-monospace: "Recursive, 'SF Mono', 'Cascadia Mono', Consolas, monospace"
+    headings-font-weight: 650
+    line-height-base: 1.66
+    # The cards, the code blocks and the sidebar have round corners of 14px,
+    # the same as the cards of the blog.
+    border-radius: "14px"
+
 
 home:
   title: Track and guard unsaved changes in Shiny
