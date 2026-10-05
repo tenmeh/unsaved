@@ -41,6 +41,9 @@ concurrency:
 jobs:
   pkgdown:
     runs-on: ubuntu-latest
+    # A build takes about 2 minutes. Without a limit, a stuck runner holds the
+    # job, and the pkgdown slot for the branch, for GitHub's 6-hour maximum.
+    timeout-minutes: 30
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -79,6 +82,7 @@ jobs:
     if: github.event_name != 'pull_request' && !github.event.repository.private
     needs: pkgdown
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
