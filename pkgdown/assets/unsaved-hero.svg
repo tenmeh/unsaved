@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 132" width="132" height="132" role="img">
+<title>The unsaved hex logo, alive: a field fills in, the teal unsaved dot pops up, and it goes away when the change is saved.</title>
+<!--
+  The animated hex of the documentation site, for the home page.
+
+  One loop tells the story of the package: someone types in a field, the
+  teal dot shows that the form has an unsaved change, a ring pulses out of
+  it, and the dot goes away when the change is saved. Then the field clears
+  and the loop starts again. The hex sways over its shadow, as the hexes of
+  bones and rewind do, so the three sites read as one family.
+
+  The logo has no wordmark here: a picture that the page loads as a
+  background cannot load a font, and the name is written on the page.
+
+  The square is 132 units wide. That is wider than the hex, 96 by 112, on
+  purpose: the sway tilts the hex by 4 degrees and lifts it a little, and
+  anything tighter would cut a corner. The hex is the same size and at the
+  same place as in bones-hero.svg and rewind-hero.svg, so that the
+  reduced-motion rule of extra.css, which swaps in the still hex at 85% of
+  the height, is right for all three.
+
+  The paths and the colours are those of pkgdown/logo/unsaved-hex.svg. There
+  is no background, so the hex sits on the paper in the light mode and on
+  the charcoal in the dark mode. The hex is paper-coloured with an ink
+  border, so it shows on both.
+
+  It is self-contained: the animation is CSS in this file. No script, no
+  font, no link to another file.
+-->
+<style>
+svg{display:block}
+.sway{transform-box:view-box;transform-origin:0 0;animation:sway 5.6s ease-in-out infinite}
+.shadow{transform-box:fill-box;transform-origin:center;opacity:.28;animation:shadow 5.6s ease-in-out infinite}
+.fill{transform-box:fill-box;transform-origin:left center;animation:type 5.6s infinite}
+.dot{transform-box:fill-box;transform-origin:center;animation:dot 5.6s infinite}
+.ring{transform-box:fill-box;transform-origin:center;opacity:0;animation:ring 5.6s ease-out infinite}
+@keyframes sway{0%{transform:translateY(0) rotate(-4deg)}25%{transform:translateY(-3.4px) rotate(0deg)}50%{transform:translateY(0) rotate(4deg)}75%{transform:translateY(-3.4px) rotate(0deg)}100%{transform:translateY(0) rotate(-4deg)}}
+@keyframes shadow{0%,50%,100%{transform:scaleX(1);opacity:.28}25%,75%{transform:scaleX(.86);opacity:.18}}
+/* The field fills from the left in uneven steps, as typing does, stays
+   while the change is unsaved and after the save, then fades for the next
+   loop. */
+@keyframes type{
+0%,6%{transform:scaleX(0);opacity:1}
+10%{transform:scaleX(.3)}
+13%{transform:scaleX(.34)}
+17%{transform:scaleX(.7)}
+21%,88%{transform:scaleX(1);opacity:1}
+95%{transform:scaleX(1);opacity:0}
+96%,100%{transform:scaleX(0);opacity:0}}
+/* The dot pops in when the typing stops, overshoots a little, rests while
+   the change is unsaved, and shrinks away when it is saved. */
+@keyframes dot{
+0%,23%{transform:scale(0)}
+26%{transform:scale(1.28);animation-timing-function:cubic-bezier(.3,0,.5,1)}
+29%{transform:scale(.9)}
+32%,70%{transform:scale(1)}
+72%{transform:scale(1.12)}
+77%,100%{transform:scale(0)}}
+@keyframes ring{
+0%,33%{transform:scale(1);opacity:0}
+34%{transform:scale(1);opacity:.7}
+50%{transform:scale(2.1);opacity:0}
+51%{transform:scale(1);opacity:0}
+52%{opacity:.5}
+66%{transform:scale(1.9);opacity:0}
+100%{opacity:0}}
+/* Still under reduced motion. Every moving part has no transform of its
+   own, so with the animation off, the hex stands upright with the field
+   full and the dot showing, as in the logo. The ring is hidden. extra.css
+   also swaps this picture for the still hex under the same setting, because
+   a browser does not always pass the setting on to a picture that a page
+   draws as a background. */
+@media (prefers-reduced-motion:reduce){*{animation:none !important}}
+</style>
+<ellipse class="shadow" cx="66" cy="126.5" rx="38" ry="3" fill="#237A80"/>
+<g transform="translate(66 64)"><g class="sway"><g transform="translate(-50 -58)">
+<path d="M50 2 L98 30 L98 86 L50 114 L2 86 L2 30 Z" fill="#F4EFE4"/>
+<path d="M50 2 L98 30 L98 86 L50 114 L2 86 L2 30 Z" fill="none" stroke="#17202A" stroke-width="3" stroke-linejoin="round"/>
+<g transform="translate(50 60) scale(1.1) translate(-50 -50.5)">
+<rect x="24" y="26" width="52" height="49" rx="6" fill="none" stroke="#17202A" stroke-width="3"/>
+<path d="M33 37 H52 M33 57 H49" stroke="#17202A" stroke-width="3" stroke-linecap="round"/>
+<rect x="33" y="43" width="34" height="8" rx="2" fill="#B9B2A3" opacity=".35"/>
+<rect class="fill" x="33" y="43" width="34" height="8" rx="2" fill="#B9B2A3"/>
+<rect x="33" y="63" width="25" height="5" rx="2" fill="#B9B2A3"/>
+<circle class="ring" cx="74" cy="28" r="9" fill="none" stroke="#237A80" stroke-width="2"/>
+<circle class="dot" cx="74" cy="28" r="9" fill="#237A80" stroke="#F4EFE4" stroke-width="3"/>
+</g></g></g></g>
+</svg>
