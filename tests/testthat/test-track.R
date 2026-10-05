@@ -173,3 +173,17 @@ test_that("missing values convert to JSON null without losing names", {
   time <- as.POSIXct("2026-01-02", tz = "UTC")
   expect_equal(na_to_null(time), as.numeric(time))
 })
+
+test_that("a tracker works in testServer() without a browser report", {
+  # testServer() has no browser, so no password report ever arrives. The
+  # tracker must still snapshot, or app authors cannot test their servers.
+  shiny::testServer(function(input, output, session) {
+    tracker <- unsaved_track("name")
+  }, {
+    session$setInputs(name = "Ada")
+    expect_equal(tracker$baseline(), list(name = "Ada"))
+    session$setInputs(name = "Grace")
+    expect_equal(tracker$is_dirty(), TRUE)
+    expect_equal(tracker$changed(), "name")
+  })
+})

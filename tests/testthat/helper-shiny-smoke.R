@@ -55,7 +55,15 @@ local_app_driver <- function(app_dir, ..., .local_envir = parent.frame()) {
     c(TMPDIR = chrome_tmp, TMP = chrome_tmp, TEMP = chrome_tmp),
     .local_envir = .local_envir
   )
-  app <- tryCatch(shinytest2::AppDriver$new(app_dir, ...), error = function(e) {
+  # A slow CI runner can miss chromote's 10-second wait for the first page
+  # load. Try once more on a time-out; a real failure fails twice.
+  start_app <- function() {
+    tryCatch(shinytest2::AppDriver$new(app_dir, ...), error = function(e) {
+      if (!grepl("timed out", conditionMessage(e), fixed = TRUE)) stop(e)
+      shinytest2::AppDriver$new(app_dir, ...)
+    })
+  }
+  app <- tryCatch(start_app(), error = function(e) {
     unlink(chrome_tmp, recursive = TRUE)
     if (identical(Sys.getenv("NOT_CRAN"), "true")) stop(e)
     testthat::skip(paste("Could not start a headless browser:", conditionMessage(e)))

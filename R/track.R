@@ -259,8 +259,18 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       private$.password_ids <- union(private$.password_ids, ids[client_ids %in% passwords])
       union(ids[vapply(ids, session$ns, character(1)) %in% tabs], private$.password_ids)
     },
+    # Until the browser says which fields are passwords, nothing is snapshotted,
+    # so a password never enters the saved values. testServer() has no browser
+    # to report and no browser to leak to, so it starts at once. The package's
+    # own tests set the option to act out a real browser that reports late.
+    fields_known = function() {
+      session <- private$.session
+      if (!is.null(session$input$unsaved_password_ids)) return(TRUE)
+      in_test_server <- inherits(session$rootScope(), "MockShinySession")
+      in_test_server && !isTRUE(getOption("unsaved.wait_for_browser"))
+    },
     current = function() {
-      if (is.null(private$.session$input$unsaved_password_ids)) return(list())
+      if (!private$fields_known()) return(list())
       snapshot_inputs(
         shiny::reactiveValuesToList(private$.session$input),
         private$.inputs,
@@ -270,7 +280,7 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
     sync = function(current, join = TRUE) {
       baseline <- snapshot_inputs(private$.baseline, private$.inputs, private$excluded_ids())
       if (join) baseline <- join_baseline(baseline, current)
-      ready <- !is.null(private$.session$input$unsaved_password_ids)
+      ready <- private$fields_known()
       if (!identical(baseline, private$.baseline) || ready != private$.password_ready) {
         private$.baseline <- baseline
         private$.password_ready <- ready
@@ -316,7 +326,7 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
     },
     client_values = function() {
       shiny::isolate({
-        if (is.null(private$.session$input$unsaved_password_ids)) return(list())
+        if (!private$fields_known()) return(list())
         restorable_values(self$baseline())
       })
     },
