@@ -8,6 +8,7 @@ unsaved_track(
   inputs,
   guard_nav = TRUE,
   guard_unload = TRUE,
+  guard_clicks = TRUE,
   on_save = NULL,
   on_discard = NULL,
   compare = NULL,
@@ -19,20 +20,23 @@ unsaved_track(
 \item{inputs}{Required non-empty character vector of unique input ids.
 Optional names are field labels; an empty name uses the id.}
 
-\item{guard_nav}{Guard clicks, keyboard and programmatic tab navigation,
+\item{guard_nav}{Guard tab clicks, keyboard and programmatic tab navigation,
 including updateTabsetPanel(). To navigate while dirty, call mark_saved(),
 discard() (and wait for restored inputs), or pause() first.}
 
 \item{guard_unload}{Warn on browser close or refresh. Browsers use generic
 wording and may suppress the prompt without prior user interaction.}
 
+\item{guard_clicks}{Guard clicks on elements marked with unsaved_guard().
+Tagged tabs follow guard_nav instead.}
+
 \item{on_save}{NULL or a function with no arguments. It must finish saving
-before it returns. Returning without error, except exactly FALSE or an
-asynchronous result, marks the inputs saved and permits navigation.
-A promise or ExtendedTask counts as a failed save and raises a warning.}
+before it returns and return TRUE for success or FALSE for expected failure.
+Errors also fail the save. Any other result keeps changes unsaved and
+raises a server warning, including NULL, NA, promises and ExtendedTask.}
 
 \item{on_discard}{NULL or a function with no arguments, called after each
-discard. Errors become warnings. Inputs may not yet be restored; use
+discard request. Errors become warnings. Inputs may not yet be restored; use
 baseline() for the restored values.}
 
 \item{compare}{NULL for tolerant comparison, one function for all inputs,
@@ -47,19 +51,7 @@ text of its first involved tracker.}
 \item{session}{The current Shiny session.}
 }
 \value{
-An UnsavedTracker R6 object. is_dirty(), count() and changed() are
-reactive. diff() is reactive and returns name, label, change, saved and
-current columns, with the values in list columns, in input order.
-baseline() returns the saved snapshot without a dependency.
-mark_saved() replaces it after the app saves. discard() restores inputs
-through client bindings. pause() disables tracking and guards; resume()
-compares current inputs with the retained baseline.
-confirm(action) runs a function with no arguments at once when clean or
-paused. Otherwise it asks for confirmation and runs the action after
-discard or a successful save. Keep editing cancels the pending action.
-It does not cancel a save already requested.
-Calling confirm() while a confirmation is pending warns and drops the
-new action; it is not run or queued.
+An UnsavedTracker R6 object with the methods below.
 }
 \description{
 Help users of Shiny forms see edits they have not saved and
@@ -81,20 +73,50 @@ sending their messages to the browser. Discard sends JSON, so exotic R
 objects may not round-trip. Use module-local ids inside moduleServer().
 
 The navigation guard and badges cover the whole page, not one form.
-For a multi-step form, use \code{guard_nav = FALSE} and \code{tracker$confirm()}
-at the real exit points. For example:
-\code{tracker$confirm(function() shiny::updateTabsetPanel(session, "pages", "home"))}.
-Alternatively, unsaved_guard() guards exit buttons and links when
-\code{guard_nav = TRUE}; it has no effect with \code{guard_nav = FALSE}.
+For a multi-step form, use \code{guard_nav = FALSE} and unsaved_guard() on
+real exit buttons and links. guard_clicks defaults to TRUE independently.
+Use \code{tracker$confirm()} for server actions.
 
 With several trackers, a shared Save and leave saves each one on its own.
 One can succeed while another fails; nothing is rolled back. Use one
 tracker and one save for fields that must save together. Starting work
 in the background and returning before it finishes is not supported.
 }
+\section{Methods}{
+
+Query methods read the real differences even while paused.
+\itemize{
+\item \code{is_dirty()}: Reactive scalar logical: TRUE if values differ.
+\item \code{count()}: Reactive scalar integer: number of changed fields.
+\item \code{changed()}: Reactive character vector of changed local input ids.
+\item \code{diff()}: Reactive data frame in input order, with name, label,
+change, saved and current columns. The last two are list columns.
+A clean tracker returns the same five columns with zero rows.
+\item \code{is_paused()}: Reactive scalar logical: TRUE while paused.
+\item \code{baseline()}: Non-reactive named list of saved values.
+\item \code{mark_saved()}: Non-reactive command. Replaces the baseline
+with current values after the app saves. Returns invisible self.
+\item \code{discard()}: Non-reactive command. Requests that the browser
+restore saved values, then calls on_discard without waiting for the
+inputs to return. Returns invisible self.
+\item \code{pause()}: Non-reactive command. Hides field markers and badge
+counts and disables all guards. Keeps the baseline and query state.
+Returns invisible self.
+\item \code{resume()}: Non-reactive command. Restores markers, badge
+counts and guards, comparing against the retained baseline.
+Returns invisible self.
+\item \code{confirm(action)}: Non-reactive command. Runs a function with
+no arguments at once when clean or paused, even with unsaved values.
+Otherwise asks first, then runs it after discard or successful save.
+Keep editing cancels the action, but not a save already requested.
+A second pending call warns and drops the new action.
+Returns invisible self, not the action result.
+}
+}
+
 \section{Loading a record}{
 
-Pause tracking, update inputs, wait for all their values to arrive from the
+Pause guards and markers, update inputs, wait for their values from the
 browser, call mark_saved(), then resume(). Calling mark_saved() immediately
 after updateTextInput() captures old server values. For a tracker listing
 \code{name}, with \code{record} holding the new saved name, the server pattern is:
@@ -119,6 +141,18 @@ shiny::observe(\{
 Use confirm() before loading over edits. Disable editing, saving and further
 loads while waiting. Check every updated field, using its binding's type.
 A field appearing later takes its first value as saved.
+}
+
+\section{Discard requests}{
+
+discard() sends a request to the browser; it does not synchronously restore
+inputs or undo writes to storage. In on_discard, read the saved snapshot:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{on_discard = function() \{
+  saved_values <- tracker$baseline()
+  # Use this snapshot, not the not-yet-restored input values.
+\}
+}\if{html}{\out{</div>}}
 }
 
 \section{Save errors}{

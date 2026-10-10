@@ -32,6 +32,7 @@ shinytest2
 snapshotted
 stylesheet
 tabset
+textOutput
 unsaved
 unsaved's
 updateTabsetPanel

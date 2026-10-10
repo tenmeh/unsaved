@@ -1,5 +1,10 @@
 # unsaved 0.1.0
 
+- `unsaved_track()` keeps its tracker object and six exports; help now lists every method.
+- Paused trackers keep truthful queries and add reactive `is_paused()`; markers and guards stay hidden.
+- `unsaved_track()` adds `guard_clicks` for tagged clicks, separate from tab-only `guard_nav`.
+- `on_save()` must return exactly `TRUE` after saving; other results fail, with warnings except for `FALSE`.
+
 * Disconnecting with a server confirmation open closes the dialog and clears the guards.
 * `on_save()` rejects asynchronous results and keeps the changes unsaved.
 * `confirm()` restores focus to the previous element when the dialog closes.

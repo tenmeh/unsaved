@@ -69,10 +69,11 @@ A reported password id stays excluded for the life of its tracker.
 | `count()` | Reactive. The number of changed inputs. |
 | `changed()` | Reactive. The ids of the changed inputs. |
 | `diff()` | Reactive. A change summary with field labels and saved/current list columns. |
+| `is_paused()` | Reactive. `TRUE` while markers and guards are paused. |
 | `baseline()` | The saved values, as a named list. Not reactive. |
 | `mark_saved()` | Call after your app saves. The current values become the saved values. |
-| `discard()` | Restore saved values through supported input bindings. |
-| `pause()`, `resume()` | Stop and restart tracking, markers and guards. |
+| `discard()` | Request that the browser restore saved values through input bindings. |
+| `pause()`, `resume()` | Hide and restore markers, badge counts and guards; queries stay truthful. |
 | `confirm(action)` | Run a function now if clean or paused; otherwise ask before running it. |
 
 Use `diff()` to build a review screen. It returns `name`, `label`, `change`,
@@ -92,12 +93,12 @@ to the dialog:
 ```r
 tracker <- unsaved_track(c("name", "age"), on_save = function() {
   save_record(input$name, input$age)  # your own save code
+  TRUE
 })
 ```
 
-- `on_save()` must finish saving before it returns. If it finishes without an
-  error and does not return `FALSE` or an asynchronous result, the tracker
-  marks the values saved and the user goes to the tab they clicked.
+- `on_save()` must finish saving and return exactly `TRUE` before the tracker
+  marks the values saved and permits navigation.
 - If `on_save()` stops with an error or returns `FALSE`, the user stays on the
   tab, keeps their changes, and sees "Could not save. Your changes are still
   here." The error message stays on the server.
@@ -106,9 +107,8 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 - With more than one tracker, the button shows only when every tracker with
   unsaved changes has an `on_save`.
 
-A promise or an `ExtendedTask` counts as a failed save and raises a warning.
-Starting work in the background and returning another value is also outside
-the save contract. **Keep editing** cancels navigation, not a save already
+Any result other than `TRUE` or `FALSE`, including NULL, NA, a number, a
+promise or an `ExtendedTask`, fails the save and raises one server warning. **Keep editing** cancels navigation, not a save already
 requested.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
@@ -147,14 +147,13 @@ exit points:
 
 ```r
 tracker <- unsaved_track(c("name", "age"), guard_nav = FALSE)
-observeEvent(input$exit, {
-  tracker$confirm(function() updateTabsetPanel(session, "pages", "home"))
-})
+# In the UI: unsaved_guard(actionButton("exit", "Exit form"))
+observeEvent(input$exit, updateTabsetPanel(session, "pages", "home"))
 ```
 
-`unsaved_guard()` is another way to guard an exit button or link when
-`guard_nav = TRUE`. It does not guard clicks when `guard_nav = FALSE`; use
-`tracker$confirm()` for the multi-step pattern above.
+`unsaved_guard()` guards exit buttons and links with `guard_clicks = TRUE`,
+which is the default even when `guard_nav = FALSE`. Use `tracker$confirm()`
+for server actions. Tagged tabs always follow `guard_nav`.
 
 Each blocked change also sets the input `unsaved_nav_blocked`, so your app can
 react to it. Inside a module this input uses the module's namespace.
@@ -185,7 +184,7 @@ unsaved_guard(tags$a(href = "/another-page", "Another page"))
 ```
 
 You can also add the attribute yourself, including on a modal close button.
-Dirty trackers with `guard_nav = TRUE` block the click. Discard or a successful
+Dirty trackers with `guard_clicks = TRUE` block the click. Discard or a successful
 save replays it once. Keep editing cancels it. Server confirmation works
 independently of `guard_nav`.
 
@@ -211,6 +210,16 @@ For exact amounts or ids, use `compare = list(amount = identical)`.
 become warnings. For a direct `discard()` call the restored inputs may not
 have reached the server yet; use `tracker$baseline()` for their saved values.
 
+A direct `discard()` is a request: the browser restores the inputs later.
+Read the baseline in the callback:
+
+```r
+on_discard = function() {
+  saved_values <- tracker$baseline()
+  # Use this snapshot, not the not-yet-restored input values.
+}
+```
+
 Restoration is tested with these Shiny inputs:
 
 - Text and text area inputs, and numeric inputs.
@@ -225,7 +234,10 @@ skipped. Discard does not undo changes your app has already made to storage.
 
 ## Loading a record
 
-Pause tracking, update the inputs, wait for the new values to arrive from the
+While paused, `is_dirty()`, `count()`, `changed()` and `diff()` still report
+real differences. Use reactive `is_paused()` to show a loading state.
+
+Pause guards and markers, update the inputs, wait for the new values to arrive from the
 browser, mark them saved, then resume. This server recipe loads two text fields
 from your app's `records()` list:
 
@@ -256,13 +268,30 @@ observe({
 ```
 
 Here the tracker must list `name` and `location`. Disable editing and saving
-while a load is pending, as tracking is paused. Wait for every field that you
+while a load is pending, as guards are paused. Wait for every field that you
 update, using the type its input binding returns. Calling `mark_saved()` right
 after `update*Input()` is wrong: the updates have not reached the browser yet,
 so it captures the old server values. A field that appears later takes its
 first value as saved.
 
 ## Modules and rewind
+
+For a module-local count, use a custom output. The built-in badge shows the
+page total. Each module can use this pattern:
+
+```r
+editor_ui <- function(id) {
+  ns <- NS(id)
+  tagList(textInput(ns("name"), "Name"), textOutput(ns("count")))
+}
+editor_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    tracker <- unsaved_track("name")
+    output$count <- renderText(paste(tracker$count(), "changed fields"))
+    tracker
+  })
+}
+```
 
 Inside `moduleServer()`, give `unsaved_track()` local input ids, without
 `session$ns()`. Markers, saves, discards and event inputs use that module's

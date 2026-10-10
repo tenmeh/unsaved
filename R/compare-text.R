@@ -7,11 +7,8 @@
 #' compare(" Ada ", "Ada")
 #' @export
 unsaved_compare_text <- function(trim = TRUE, empty_is_null = TRUE) {
-  for (flag in list(trim, empty_is_null)) {
-    if (!is.logical(flag) || length(flag) != 1L || is.na(flag)) {
-      stop("Text comparison options must be single logical values.", call. = FALSE)
-    }
-  }
+  check_flag(trim, "trim")
+  check_flag(empty_is_null, "empty_is_null")
   normalise <- function(value) {
     if (trim && is.character(value)) value <- trimws(value)
     if (empty_is_null && identical(value, "")) value <- NULL
@@ -24,10 +21,15 @@ validate_compare <- function(compare, inputs) {
   if (is.null(compare) || is.function(compare)) return(invisible(NULL))
   valid <- is.list(compare) && !is.null(names(compare)) &&
     !anyNA(names(compare)) && all(nzchar(names(compare))) &&
-    !anyDuplicated(names(compare)) && all(names(compare) %in% inputs) &&
+    !anyDuplicated(names(compare)) &&
     all(vapply(compare, is.function, logical(1)))
   if (!valid) {
     stop("`compare` must be NULL, a function, or a named list of functions keyed by tracked input id.", call. = FALSE)
+  }
+  unknown <- setdiff(names(compare), inputs)
+  if (length(unknown)) {
+    stop("`compare` has unknown input id `", substr(unknown[1L], 1L, 60L),
+         "`. Tracked ids: ", paste(inputs, collapse = ", "), ".", call. = FALSE)
   }
   invisible(NULL)
 }

@@ -49,7 +49,7 @@ test_that("named tracker inputs validate and diff is reactive across save and pa
     expect_equal(changes()$name, c("role", "name", "raw"))
     expect_equal(changes()$label, c("Role", "Full name", "raw"))
     tracker$pause()
-    expect_equal(nrow(changes()), 0L)
+    expect_equal(nrow(changes()), 3L)
     tracker$resume()
     expect_equal(nrow(changes()), 3L)
     tracker$mark_saved()

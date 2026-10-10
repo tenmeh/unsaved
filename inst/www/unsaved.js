@@ -313,7 +313,8 @@
   function guardNavigation(e, target) {
     if (bypass || !target || (target.matches(selector) && isActive(target))) return;
     var instances = Object.keys(states).filter(function (id) {
-      return states[id].guardNav && states[id].ids.length;
+      var enabled = target.matches(selector) ? states[id].guardNav : states[id].guardClicks;
+      return enabled && states[id].ids.length;
     });
     if (!instances.length) return;
     e.preventDefault();
@@ -348,6 +349,7 @@
       var current = state(message.instance);
       current.inputs = message.baseline || {};
       current.guardNav = message.guardNav;
+      current.guardClicks = message.guardClicks;
       current.guardUnload = message.guardUnload;
       current.canSave = message.canSave;
       current.saveInput = message.saveInput;

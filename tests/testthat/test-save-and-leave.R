@@ -16,7 +16,7 @@ make_save_app <- function(save = "none", multi = FALSE, second_save = TRUE) {
     "save_callback <- function() {",
     "saved(saved() + 1L)",
     if (save == "error") "stop('Secret server detail')" else
-      if (save == "false") "return(FALSE)" else "NULL",
+      if (save == "false") "return(FALSE)" else "TRUE",
     "}",
     paste0("tracker <- unsaved_track(c('tabs', 'name', 'late'), on_save = ", handler, ")"),
     if (multi) paste0("second <- unsaved_track('second', on_save = ", second_handler, ")") else "",
