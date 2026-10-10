@@ -12,8 +12,14 @@ remotes::install_github("tenmeh/unsaved")
 
 ## Track your form
 
+`unsaved` helps users of Shiny forms see edits they have not saved and asks
+before they lose them. Use it for record editors, settings pages and
+data-entry forms with a Save button. Your app validates and saves the data.
+
 List the input ids that belong to the form. Add `unsaved_badge()` to show
 the number of changed fields. A changed field also gets a dot by its label.
+The navigation guard and badges cover the whole page, not one form. A badge
+counts distinct changed fields across all trackers, including modules.
 
 ```r
 library(shiny)
@@ -48,7 +54,7 @@ shinyApp(ui, server)
 ```
 
 The package does not save data. Call `mark_saved()` after your own save
-finishes. Call `discard()` to restore the saved input values.
+finishes. Call `discard()` to restore saved values through supported bindings.
 
 `changed()` gives the ids of changed fields, `count()` gives their number,
 and `is_dirty()` tells you whether there are changes. Use `baseline()` for
@@ -61,6 +67,47 @@ An `on_save` function adds **Save and leave** to the navigation dialog.
 It takes no arguments. The tracker marks values saved after it returns
 successfully, then opens the requested tab. Returning `FALSE` or raising
 an error keeps the edits and shows a safe failure message.
+
+`on_save()` must finish saving before it returns. A promise or an
+`ExtendedTask` counts as a failed save and raises a warning. Starting a
+background save and returning another value is also outside this contract.
+Keep editing cancels navigation, not a save already requested.
+
+With several trackers, a shared Save and leave saves each tracker on its own.
+One can succeed while another fails, and nothing is rolled back. Use one
+tracker and one save for fields that must save together.
+
+## Save errors: failed save and retry
+
+Keep validation and error logging inside your save function. This server
+recipe requires a non-empty name. `save_record()` is your app's storage code:
+
+```r
+save_form <- function() {
+  if (!nzchar(trimws(input$name))) return(FALSE)
+  tryCatch({
+    save_record(input$name)
+    TRUE
+  }, error = function(error) {
+    message("Save failed: ", conditionMessage(error))  # server log
+    FALSE
+  })
+}
+tracker <- unsaved_track("name", on_save = save_form)
+observeEvent(input$save, {
+  if (isTRUE(save_form())) {
+    tracker$mark_saved()
+  } else {
+    showNotification("Could not save. Your changes are still here.")
+  }
+})
+```
+
+Use your app's logger in place of `message()` if needed. Clear the name and
+try Save and leave: the dialog stays open and shows the generic message
+"Could not save. Your changes are still here." Choose Keep editing, enter a
+valid name and try again. Only a successful save changes the saved baseline.
+Storage errors are logged on the server; their details do not reach the browser.
 
 ## The navigation guard
 
@@ -76,6 +123,22 @@ to turn it off. The live demo runs in an iframe; open it in a new tab to
 try the browser warning.
 
 [Try the profile editor](live-demo.html).
+
+## Multi-step forms
+
+Allow movement between the steps and confirm only at real exit points.
+This server recipe assumes `pages` contains the form steps and a `home` tab:
+
+```r
+tracker <- unsaved_track(c("name", "age"), guard_nav = FALSE)
+observeEvent(input$exit, {
+  tracker$confirm(function() updateTabsetPanel(session, "pages", "home"))
+})
+```
+
+The browser close guard remains active. `unsaved_guard()` can guard exit
+buttons or links when `guard_nav = TRUE`. It has no effect when that option
+is `FALSE`, so use `tracker$confirm()` for this multi-step pattern.
 
 ## Field labels and the change list
 
@@ -110,9 +173,25 @@ NULL; either rule can be turned off. A comparison can be NULL, one function
 for every input, or a named list by input id. Each function takes saved and
 current values and returns one non-missing logical for equality.
 
+Numeric values use `all.equal()` with relative tolerance `1e-8`. Near zero,
+`all.equal()` uses an absolute difference. For exact amounts or ids, use
+`compare = list(amount = identical)`.
+
 `on_discard()` runs after every server or dialog discard. Errors become
 warnings. After a direct `discard()` call, inputs may not yet have returned
 from the browser; use `baseline()` for saved values.
+
+Restoration is tested with these Shiny inputs:
+
+- Text and text area inputs, and numeric inputs.
+- Radio buttons, checkboxes and checkbox groups.
+- Select inputs with the default selectize binding.
+- Date inputs and date ranges.
+- Numeric sliders and ranges, date sliders and ranges, and date-time sliders.
+
+`discard()` cannot restore file uploads, password fields or inputs without
+a Shiny binding. Missing elements are skipped. Password fields are not tracked.
+Discard does not undo writes your app has already made to storage.
 
 ## Protect loading and other actions
 
@@ -142,6 +221,68 @@ unsaved_guard(tags$a(href = "/another-page", "Another page"))
 Modal close buttons can use the same attribute. Dirty trackers with
 `guard_nav = TRUE` block the click; discard or a successful save replays it.
 
+## Loading a record
+
+The showcase pauses tracking before it updates inputs. It waits for all the
+new values to return from the browser, marks them saved and resumes tracking.
+Here `records()` is your app's list of saved records, each with two text fields:
+
+```r
+tracker <- unsaved_track(c("name", "location"))
+pending_record <- reactiveVal(NULL)
+observeEvent(input$load, {
+  req(is.null(pending_record()))
+  record_id <- input$record
+  tracker$confirm(function() {
+    record <- records()[[record_id]]
+    tracker$pause()
+    pending_record(record)
+    updateTextInput(session, "name", value = record$name)
+    updateTextInput(session, "location", value = record$location)
+  })
+})
+observe({
+  record <- pending_record()
+  req(!is.null(record))
+  ready <- identical(input$name, record$name) &&
+    identical(input$location, record$location)
+  if (ready) {
+    tracker$mark_saved()
+    tracker$resume()
+    pending_record(NULL)
+  }
+})
+```
+
+Disable editing and saving while a load is pending, as tracking is paused.
+Check every updated field, using the type its input binding returns. Calling
+`mark_saved()` right after `update*Input()` is wrong: the browser has not yet
+received the updates, so the server still holds the old values. A field that
+appears later takes its first value as saved.
+
+## Editing inside a modal
+
+Keep `guard_nav = TRUE` and guard the explicit close button. This server
+recipe tracks a text field created inside the modal:
+
+```r
+tracker <- unsaved_track("modal_name")
+observeEvent(input$edit, {
+  showModal(modalDialog(
+    textInput("modal_name", "Name", "Ada"),
+    easyClose = FALSE,
+    footer = unsaved_guard(actionButton("close_editor", "Close"))
+  ))
+})
+observeEvent(input$close_editor, removeModal())
+```
+
+With edits pending, Close asks before discarding them. Escape and backdrop
+clicks are not guarded otherwise, so use `modalDialog(easyClose = FALSE)`.
+The guard does not intercept a server call to `removeModal()`; confirm other
+server actions before they remove the modal. Add `on_save` and your app's save
+code if the dialog should also offer Save and leave.
+
 ## Modules
 
 Create the tracker inside `moduleServer()` with local input ids. Do not
@@ -163,3 +304,11 @@ Undoing to saved values clears dirty state. Redo makes the form dirty again.
 Discard is a normal edit, so rewind can undo it. For text, slow typing makes
 several history steps; `updateOn = "blur"` gives one per edit. Ctrl+Z inside
 a text box uses the browser's own undo, so use rewind's controls or API.
+
+## Limits
+
+Dirty state needs a round trip to the server. An edit made while the server
+is busy is protected only once the server has seen it and sent the new state
+back to the browser. Browser close warnings can be suppressed, so they are
+not a guarantee. `unsaved` does not recover a lost session or resolve conflicts
+between users editing the same record.

@@ -14,8 +14,9 @@ Things to try:
 * Edit a field and click **Preferences**. Try **Keep editing**, **Discard
   changes** and **Save and leave** in the dialog.
 * Click **Add a contact note**. Its first value is saved; edit it to see a dot.
-* Select Sam and click **Load another record**. Loading is disabled until
-  you save or discard. Visit **Saved profile** to see what the app stored.
+* Select Sam and click **Load another record**. If you have unsaved changes,
+  a dialog asks you to keep editing, discard, or save and leave.
+  Visit **Saved profile** to see what the app stored.
 
 ```{=html}
 <div class="unsaved-live-demo">

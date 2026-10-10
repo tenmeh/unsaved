@@ -26,8 +26,10 @@ discard() (and wait for restored inputs), or pause() first.}
 \item{guard_unload}{Warn on browser close or refresh. Browsers use generic
 wording and may suppress the prompt without prior user interaction.}
 
-\item{on_save}{NULL or a function with no arguments. Returning without error,
-except exactly FALSE, marks the inputs saved and permits navigation.}
+\item{on_save}{NULL or a function with no arguments. It must finish saving
+before it returns. Returning without error, except exactly FALSE or an
+asynchronous result, marks the inputs saved and permits navigation.
+A promise or ExtendedTask counts as a failed save and raises a warning.}
 
 \item{on_discard}{NULL or a function with no arguments, called after each
 discard. Errors become warnings. Inputs may not yet be restored; use
@@ -35,7 +37,9 @@ baseline() for the restored values.}
 
 \item{compare}{NULL for tolerant comparison, one function for all inputs,
 or a named list of functions keyed by tracked input id. Functions take
-saved and current values and return a single non-NA logical for equality.}
+saved and current values and return a single non-NA logical for equality.
+Numeric values use all.equal() with relative tolerance 1e-8 (absolute near
+zero). For exact amounts or ids, use \code{compare = list(amount = identical)}.}
 
 \item{text}{Text returned by unsaved_text(). A shared dialog uses the
 text of its first involved tracker.}
@@ -53,11 +57,13 @@ compares current inputs with the retained baseline.
 confirm(action) runs a function with no arguments at once when clean or
 paused. Otherwise it asks for confirmation and runs the action after
 discard or a successful save. Keep editing cancels the pending action.
+It does not cancel a save already requested.
 Calling confirm() while a confirmation is pending warns and drops the
 new action; it is not run or queued.
 }
 \description{
-Track Unsaved Input Changes
+Help users of Shiny forms see edits they have not saved and
+ask before they lose them. The app validates and saves its own data.
 }
 \details{
 Initial values are captured after the first reactive flush and
@@ -73,7 +79,83 @@ including after the widget is removed or its id is reused.
 Save and leave waits for a server round trip. Errors are caught without
 sending their messages to the browser. Discard sends JSON, so exotic R
 objects may not round-trip. Use module-local ids inside moduleServer().
+
+The navigation guard and badges cover the whole page, not one form.
+For a multi-step form, use \code{guard_nav = FALSE} and \code{tracker$confirm()}
+at the real exit points. For example:
+\code{tracker$confirm(function() shiny::updateTabsetPanel(session, "pages", "home"))}.
+Alternatively, unsaved_guard() guards exit buttons and links when
+\code{guard_nav = TRUE}; it has no effect with \code{guard_nav = FALSE}.
+
+With several trackers, a shared Save and leave saves each one on its own.
+One can succeed while another fails; nothing is rolled back. Use one
+tracker and one save for fields that must save together. Starting work
+in the background and returning before it finishes is not supported.
 }
+\section{Loading a record}{
+
+Pause tracking, update inputs, wait for all their values to arrive from the
+browser, call mark_saved(), then resume(). Calling mark_saved() immediately
+after updateTextInput() captures old server values. For a tracker listing
+\code{name}, with \code{record} holding the new saved name, the server pattern is:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{pending_record <- shiny::reactiveVal(NULL)
+load_record <- function(record) \{
+  tracker$pause()
+  pending_record(record)
+  shiny::updateTextInput(session, "name", value = record$name)
+\}
+shiny::observe(\{
+  record <- pending_record()
+  shiny::req(!is.null(record))
+  if (identical(input$name, record$name)) \{
+    tracker$mark_saved()
+    tracker$resume()
+    pending_record(NULL)
+  \}
+\})
+}\if{html}{\out{</div>}}
+
+Use confirm() before loading over edits. Disable editing, saving and further
+loads while waiting. Check every updated field, using its binding's type.
+A field appearing later takes its first value as saved.
+}
+
+\section{Save errors}{
+
+The app must log errors inside on_save(), then return FALSE. The browser
+only sees the generic save failure message. For example:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{on_save <- function() \{
+  tryCatch(\{
+    save_record(input$name)
+    TRUE
+  \}, error = function(error) \{
+    message("Save failed: ", conditionMessage(error))
+    FALSE
+  \})
+\}
+}\if{html}{\out{</div>}}
+
+Replace message() with your app's logger if needed. After correcting the
+problem, select Save and leave again to retry.
+}
+
+\section{Limits}{
+
+Dirty state needs a round trip to the server. An edit made while the server
+is busy is protected only once the server has seen it and sent the new state
+back to the browser. Browser close warnings may be suppressed.
+
+discard() restores saved values through supported Shiny bindings. It is
+tested with text, text area and numeric inputs; radio buttons, checkboxes
+and checkbox groups; select inputs with the default selectize binding;
+date inputs and ranges; numeric sliders and ranges; date sliders and ranges;
+and date-time sliders. It cannot restore file uploads, password fields or
+inputs without a Shiny binding. Missing elements are skipped. It does not
+undo app-side writes to storage.
+}
+
 \examples{
 if (interactive()) {
   shiny::shinyApp(

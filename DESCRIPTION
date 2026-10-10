@@ -1,17 +1,21 @@
 Package: unsaved
-Title: Track and Guard Unsaved Changes in 'shiny' Apps
+Title: Unsaved Change Tracking for 'shiny' Forms
 Version: 0.1.0
 Authors@R: person("Tanmay", "Chanda", role = c("aut", "cre", "cph"),
     email = "tanmaychanda96@gmail.com")
-Description: Tracks changes to input values in 'shiny' applications, marks
-    changed fields, and guards navigation with a client-side confirmation
-    dialog. Applications retain responsibility for saving their data.
+Description: Helps users of 'shiny' forms see which edits they have not saved,
+    and asks before they leave or take an action that would lose them. Compares
+    the inputs an application lists with the values it last saved, marks
+    changed fields, counts and summarises the changes, and guards tab
+    changes, chosen buttons and links, and closing the browser. Applications
+    remain responsible for validating and saving their data.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Language: en-GB
 Depends: R (>= 4.1.0)
 Imports: shiny (>= 1.7.0), htmltools, R6
-Suggests: testthat (>= 3.0.0), shinytest2, bslib, withr, rewind, chromote
+Suggests: testthat (>= 3.0.0), shinytest2, bslib, withr, rewind, chromote,
+    promises
 URL: https://github.com/tenmeh/unsaved, https://tenmeh.github.io/unsaved/
 BugReports: https://github.com/tenmeh/unsaved/issues
 Config/testthat/edition: 3
