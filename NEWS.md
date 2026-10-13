@@ -15,3 +15,5 @@
 * `unsaved_text()` sets dialog and screen-reader text.
 * Dialogs offer Keep editing, Discard changes and optional Save and leave actions.
 * Save callbacks must finish and return TRUE; errors and invalid results warn.
+* `tracker$mark_saved(values =)` accepts a saved record before input updates.
+* Browser edits provisionally arm the close-tab warning while the server is busy.

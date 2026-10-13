@@ -30,13 +30,13 @@ test_that("the showcase saves and loads session records", {
     expect_equal(tracker$changed(), "contact")
     session$setInputs(save = 2, load = 2)
     expect_equal(active(), "sam")
-    expect_equal(loading(), TRUE)
+    expect_equal(tracker$baseline()$name, "Sam Patel")
+    expect_equal(tracker$is_paused(), FALSE)
     session$setInputs(
       name = "Sam Patel", role = "Developer", location = "Bristol",
       bio = "Building the next release.", newsletter = FALSE,
       contact = "Available in the mornings"
     )
-    expect_equal(loading(), FALSE)
     expect_equal(tracker$is_dirty(), FALSE)
     expect_match(output$saved_profile$html, "Sam Patel")
   })

@@ -94,7 +94,7 @@
         .replace(/\{n\}/g, ids.size).replace(/\{s\}/g, ids.size === 1 ? "" : "s") : "";
     });
     var active = Object.keys(states).some(function (id) {
-      return states[id].guardUnload && states[id].ids.length;
+      return states[id].guardUnload && (states[id].ids.length || states[id].provisional);
     });
     if (active !== unloadActive) {
       window[active ? "addEventListener" : "removeEventListener"]("beforeunload", beforeUnload);
@@ -345,6 +345,19 @@
   function register() {
     if (!window.Shiny || !window.Shiny.addCustomMessageHandler) return;
     window.jQuery(document).on("show.bs.tab.unsaved show.tab.unsaved", selector, guardTabShow);
+    // Only unload uses this estimate. R remains authoritative for all UI state.
+    window.jQuery(document).on("shiny:inputchanged.unsaved", function (event) {
+      var el = document.getElementById(event.name);
+      if (!el) return;
+      Object.keys(states).forEach(function (id) {
+        var current = states[id];
+        if (!current.guardUnload || !Object.prototype.hasOwnProperty.call(current.inputs, event.name)) return;
+        var saved = JSON.stringify(bindingValue(el, current.inputs[event.name]));
+        var value = JSON.stringify(bindingValue(el, event.value));
+        if (saved !== value) current.provisional = true;
+      });
+      reconcile();
+    });
     window.Shiny.addCustomMessageHandler("unsaved:config", function (message) {
       var current = state(message.instance);
       current.inputs = message.baseline || {};
@@ -365,6 +378,7 @@
     });
     window.Shiny.addCustomMessageHandler("unsaved:state", function (message) {
       state(message.instance).ids = message.ids || [];
+      state(message.instance).provisional = false;
       reconcile();
     });
     window.Shiny.addCustomMessageHandler("unsaved:restore", function (message) {

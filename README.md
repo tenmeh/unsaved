@@ -234,45 +234,36 @@ skipped. Discard does not undo changes your app has already made to storage.
 
 ## Loading a record
 
-While paused, `is_dirty()`, `count()`, `changed()` and `diff()` still report
-real differences. Use reactive `is_paused()` to show a loading state.
-
-Pause guards and markers, update the inputs, wait for the new values to arrive from the
-browser, mark them saved, then resume. This server recipe loads two text fields
-from your app's `records()` list:
+Set the saved baseline before sending input updates. Here `records()` holds
+saved records with the tracked fields `name` and `location`:
 
 ```r
-pending_record <- reactiveVal(NULL)
 observeEvent(input$load, {
-  req(is.null(pending_record()))
   record_id <- input$record
   tracker$confirm(function() {
     record <- records()[[record_id]]
-    tracker$pause()
-    pending_record(record)
+    tracker$mark_saved(values = record)
     updateTextInput(session, "name", value = record$name)
     updateTextInput(session, "location", value = record$location)
   })
 })
-observe({
-  record <- pending_record()
-  req(!is.null(record))
-  ready <- identical(input$name, record$name) &&
-    identical(input$location, record$location)
-  if (ready) {
-    tracker$mark_saved()
-    tracker$resume()
-    pending_record(NULL)
-  }
-})
 ```
 
-Here the tracker must list `name` and `location`. Disable editing and saving
-while a load is pending, as guards are paused. Wait for every field that you
-update, using the type its input binding returns. Calling `mark_saved()` right
-after `update*Input()` is wrong: the updates have not reached the browser yet,
-so it captures the old server values. A field that appears later takes its
-first value as saved.
+`values` is a named list keyed by tracked input id. Omitted ids use their
+current input values. Unknown ids are errors; password ids are ignored.
+File values can be saved on the server but are never sent to the browser.
+With no argument, `mark_saved()` still captures current input values.
+
+The browser receives a clean state immediately. Until the updated values
+return, server comparisons can briefly report the old inputs as dirty.
+The next server comparison decides the state; matching echoes leave it clean.
+Supply values with the types returned by each input binding. Use `confirm()`
+before replacing edits, as above.
+
+The pause, update, wait for every echo, `mark_saved()`, resume pattern is still
+useful when the final values are not known in advance, or updates span several
+round trips. Disable editing and saving while that load is pending. Paused
+queries still report real differences; `is_paused()` can show a loading state.
 
 ## Modules and rewind
 
@@ -306,9 +297,12 @@ inside a text box uses the browser's own undo.
 
 ## Limits
 
-- Dirty state needs a round trip to the server. An edit made while the server
-  is busy is protected only once the server has seen it and sent the new state
-  back to the browser.
+- For cached, restorable inputs, the close-tab warning is armed as soon as the
+  browser reports a changed value, even while the server is busy. Paused trackers
+  and `guard_unload = FALSE` are excluded. Markers, badges, tab and click guards
+  still follow the server. The browser uses JSON equality; the next server state
+  wins, including custom comparisons. Password and file inputs have no
+  provisional protection.
 - Browsers show their own close or refresh warning, ignore any custom text, and
   may not show it at all if the user has not used the page. Treat it as a
   courtesy, not a guarantee.

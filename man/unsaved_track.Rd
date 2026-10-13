@@ -94,8 +94,11 @@ change, saved and current columns. The last two are list columns.
 A clean tracker returns the same five columns with zero rows.
 \item \code{is_paused()}: Reactive scalar logical: TRUE while paused.
 \item \code{baseline()}: Non-reactive named list of saved values.
-\item \code{mark_saved()}: Non-reactive command. Replaces the baseline
-with current values after the app saves. Returns invisible self.
+\item \code{mark_saved(values = NULL)}: Non-reactive command. Uses current inputs
+as the baseline, or overlays a named list of saved values keyed by
+tracked input id. Omitted ids use current values. Unknown ids are
+errors; passwords are ignored. File values stay on the server.
+Publishes a clean browser state immediately. Returns invisible self.
 \item \code{discard()}: Non-reactive command. Requests that the browser
 restore saved values, then calls on_discard without waiting for the
 inputs to return. Returns invisible self.
@@ -120,31 +123,35 @@ supported by Shiny. Returns invisible self.
 
 \section{Loading a record}{
 
-Pause guards and markers, update inputs, wait for their values from the
-browser, call mark_saved(), then resume(). Calling mark_saved() immediately
-after updateTextInput() captures old server values. For a tracker listing
-\code{name}, with \code{record} holding the new saved name, the server pattern is:
+Set the saved baseline before sending input updates. Here \code{records()} holds
+saved records with the tracked fields \code{name} and \code{location}:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{pending_record <- shiny::reactiveVal(NULL)
-load_record <- function(record) \{
-  tracker$pause()
-  pending_record(record)
-  shiny::updateTextInput(session, "name", value = record$name)
-\}
-shiny::observe(\{
-  record <- pending_record()
-  shiny::req(!is.null(record))
-  if (identical(input$name, record$name)) \{
-    tracker$mark_saved()
-    tracker$resume()
-    pending_record(NULL)
-  \}
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{observeEvent(input$load, \{
+  record_id <- input$record
+  tracker$confirm(function() \{
+    record <- records()[[record_id]]
+    tracker$mark_saved(values = record)
+    updateTextInput(session, "name", value = record$name)
+    updateTextInput(session, "location", value = record$location)
+  \})
 \})
 }\if{html}{\out{</div>}}
 
-Use confirm() before loading over edits. Disable editing, saving and further
-loads while waiting. Check every updated field, using its binding's type.
-A field appearing later takes its first value as saved.
+\code{values} is a named list keyed by tracked input id. Omitted ids use their
+current input values. Unknown ids are errors; password ids are ignored.
+File values can be saved on the server but are never sent to the browser.
+With no argument, \code{mark_saved()} still captures current input values.
+
+The browser receives a clean state immediately. Until the updated values
+return, server comparisons can briefly report the old inputs as dirty.
+The next server comparison decides the state; matching echoes leave it clean.
+Supply values with the types returned by each input binding. Use \code{confirm()}
+before replacing edits, as above.
+
+The pause, update, wait for every echo, \code{mark_saved()}, resume pattern is still
+useful when the final values are not known in advance, or updates span several
+round trips. Disable editing and saving while that load is pending. Paused
+queries still report real differences; \code{is_paused()} can show a loading state.
 }
 
 \section{Discard requests}{
@@ -181,9 +188,13 @@ problem, select Save and leave again to retry.
 
 \section{Limits}{
 
-Dirty state needs a round trip to the server. An edit made while the server
-is busy is protected only once the server has seen it and sent the new state
-back to the browser. Browser close warnings may be suppressed.
+For cached, restorable inputs, the close-tab warning is armed as soon as the
+browser reports a changed value, even while the server is busy. Paused trackers
+and \code{guard_unload = FALSE} are excluded. Markers, badges, tab and click guards
+still follow the server. The browser uses JSON equality; the next server state
+wins, including custom comparisons. Password and file inputs have no
+provisional protection.
+Browser close warnings may be suppressed.
 
 discard() restores saved values through supported Shiny bindings. It is
 tested with text, text area and numeric inputs; radio buttons, checkboxes
