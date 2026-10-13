@@ -58,3 +58,32 @@ test_that("named tracker inputs validate and diff is reactive across save and pa
     expect_equal(changes()$saved, list("Grace"))
   })
 })
+
+test_that("diff and tracking share a cached input snapshot", {
+  shiny::testServer(function(input, output, session) {
+    tracker <- unsaved_track("name")
+    private <- tracker$.__enclos_env__$private
+    original <- private$current
+    calls <- new.env()
+    calls$n <- 0L
+    unlockBinding("current", private)
+    private$current <- function() {
+      calls$n <- calls$n + 1L
+      original()
+    }
+    changes <- shiny::reactive(tracker$diff())
+  }, {
+    session$setInputs(name = "Ada")
+    session$setInputs(name = "Grace")
+    before <- calls$n
+    expect_equal(changes()$current, list("Grace"))
+    expect_equal(tracker$diff()$current, list("Grace"))
+    expect_equal(calls$n, before)
+    session$setInputs(name = "Next")
+    expect_equal(changes()$current, list("Next"))
+    expect_equal(calls$n, before + 1L)
+    tracker$mark_saved()
+    expect_equal(tracker$baseline(), list(name = "Next"))
+    expect_equal(nrow(changes()), 0L)
+  })
+})

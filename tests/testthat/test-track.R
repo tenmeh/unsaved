@@ -130,7 +130,16 @@ test_that("save callbacks acknowledge success and keep baselines on failure", {
     for (failure in c("false", "error")) {
       save_state$mode <- failure
       session$setInputs(name = failure)
-      session$setInputs(unsaved_save_requested = list(instance = config$instance, target = "tab", at = failure))
+      request <- list(instance = config$instance, target = "tab", at = failure)
+      if (failure == "error") {
+        expect_warning(
+          session$setInputs(unsaved_save_requested = request),
+          "on_save() failed: private error detail. The changes are kept as unsaved.",
+          fixed = TRUE
+        )
+      } else {
+        expect_no_warning(session$setInputs(unsaved_save_requested = request))
+      }
       expect_equal(last_reply(), list(instance = config$instance, ok = FALSE))
       expect_equal(tracker$baseline()$name, "Grace")
       expect_equal(tracker$is_dirty(), TRUE)

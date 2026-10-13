@@ -212,8 +212,8 @@ observeEvent(input$load, {
 })
 ```
 
-Clean or paused trackers run the action at once. Dirty trackers open the
-dialog. Keep editing cancels. Discard restores, calls `on_discard`, then
+Clean trackers run the action at once. Dirty trackers open the dialog even
+while paused. Keep editing cancels. Discard restores, calls `on_discard`, then
 runs the action once. Save and leave runs it only after a successful save.
 Only one confirmation per tracker can be pending. Calling `confirm()` again
 while waiting warns and drops the new action without running or queuing it.

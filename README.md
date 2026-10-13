@@ -74,7 +74,8 @@ A reported password id stays excluded for the life of its tracker.
 | `mark_saved()` | Call after your app saves. The current values become the saved values. |
 | `discard()` | Request that the browser restore saved values through input bindings. |
 | `pause()`, `resume()` | Hide and restore markers, badge counts and guards; queries stay truthful. |
-| `confirm(action)` | Run a function now if clean or paused; otherwise ask before running it. |
+| `confirm(action)` | Run a function now if clean; otherwise ask, even while paused. |
+| `destroy()` | Stop tracking and remove markers, badge counts and guards. Safe to repeat. |
 
 Use `diff()` to build a review screen. It returns `name`, `label`, `change`,
 `saved` and `current`, in the order of `inputs`, with one row per changed field.
@@ -101,15 +102,14 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
   marks the values saved and permits navigation.
 - If `on_save()` stops with an error or returns `FALSE`, the user stays on the
   tab, keeps their changes, and sees "Could not save. Your changes are still
-  here." The error message stays on the server.
+  here." The error message goes to a server warning, not to the browser.
 - Saving needs a round trip to the server, so the dialog waits while the server
   is busy. Discarding does not wait.
 - With more than one tracker, the button shows only when every tracker with
   unsaved changes has an `on_save`.
-
-Any result other than `TRUE` or `FALSE`, including NULL, NA, a number, a
-promise or an `ExtendedTask`, fails the save and raises one server warning. **Keep editing** cancels navigation, not a save already
-requested.
+- Any result other than `TRUE` or `FALSE`, including NULL, NA, a number, a
+  promise or an `ExtendedTask`, fails the save and raises one server warning.
+- **Keep editing** cancels navigation, not a save already requested.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
 One can succeed while another fails. Nothing is rolled back. Use one tracker
@@ -168,7 +168,7 @@ observeEvent(input$load, {
 })
 ```
 
-Clean or paused trackers run the function at once. A dirty tracker asks first.
+Clean trackers run the function at once. A dirty tracker asks even while paused.
 Keep editing cancels. Discard restores inputs, calls `on_discard`, then runs
 the action. Save and leave runs it only after a successful save. The action
 runs once on the server. While one confirmation is pending, further calls

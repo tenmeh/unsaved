@@ -1,0 +1,39 @@
+# Check against development Shiny to catch its planned jQuery changes early.
+# unsaved.js reads $(el).data("shiny-input-binding") and the slider's data-type,
+# and listens for jQuery shiny:bound and shiny:disconnected events.
+# This is an early warning job, not a required check.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'inst/www/**'
+
+name: Shiny dev
+
+permissions: read-all
+
+jobs:
+  shiny-dev:
+    runs-on: ubuntu-latest
+    # Limit the time a stalled browser test can hold a runner.
+    timeout-minutes: 45
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            github::rstudio/shiny
+            any::rcmdcheck
+          needs: check
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          error-on: '"error"'

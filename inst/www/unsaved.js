@@ -299,7 +299,7 @@
     dialog = {
       text: text, backdrop: backdrop, target: target, discard: discard,
       save: save, alert: alert, waiting: false, confirmation: confirmation,
-      previousFocus: previousFocus
+      previousFocus: previousFocus, instances: instances
     };
     keep.focus();
   }
@@ -372,6 +372,12 @@
       restore(message.inputs || {});
     });
     window.Shiny.addCustomMessageHandler("unsaved:saved", saveReply);
+    window.Shiny.addCustomMessageHandler("unsaved:remove", function (message) {
+      delete states[message.instance];
+      delete saveRequests[message.instance];
+      if (dialog && dialog.instances.indexOf(message.instance) !== -1) closeDialog(false);
+      reconcile();
+    });
     window.Shiny.addCustomMessageHandler("unsaved:confirm", function (message) {
       showDialog(null, [message.instance], message);
     });

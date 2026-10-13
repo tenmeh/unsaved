@@ -56,3 +56,12 @@ check_flag <- function(value, name) {
   }
   invisible(NULL)
 }
+
+check_callback <- function(value, name, allow_null = TRUE) {
+  if (allow_null && is.null(value)) return(invisible(NULL))
+  if (!is.function(value) || is.primitive(value) || length(formals(value)) != 0L) {
+    stop("`", name, "` must be ", if (allow_null) "NULL or " else "",
+         "a function with no arguments.", call. = FALSE)
+  }
+  invisible(NULL)
+}

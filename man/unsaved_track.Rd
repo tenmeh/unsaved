@@ -106,11 +106,15 @@ Returns invisible self.
 counts and guards, comparing against the retained baseline.
 Returns invisible self.
 \item \code{confirm(action)}: Non-reactive command. Runs a function with
-no arguments at once when clean or paused, even with unsaved values.
+no arguments at once when clean. Paused dirty trackers still ask.
 Otherwise asks first, then runs it after discard or successful save.
 Keep editing cancels the action, but not a save already requested.
 A second pending call warns and drops the new action.
 Returns invisible self, not the action result.
+\item \code{destroy()}: Stops tracking, cancels a pending confirmation and removes
+client markers, badge counts and guards. Repeated calls do nothing.
+Runs automatically on session end and on module destruction when
+supported by Shiny. Returns invisible self.
 }
 }
 
