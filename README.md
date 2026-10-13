@@ -98,8 +98,8 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 })
 ```
 
-- `on_save()` must finish saving and return exactly `TRUE` before the tracker
-  marks the values saved and permits navigation.
+- `on_save()` must return exactly `TRUE`, or a promise that resolves to exactly
+  `TRUE`, before the tracker marks values saved and permits navigation.
 - If `on_save()` stops with an error or returns `FALSE`, the user stays on the
   tab, keeps their changes, and sees "Could not save. Your changes are still
   here." The error message goes to a server warning, not to the browser.
@@ -107,13 +107,35 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
   is busy. Discarding does not wait.
 - With more than one tracker, the button shows only when every tracker with
   unsaved changes has an `on_save`.
-- Any result other than `TRUE` or `FALSE`, including NULL, NA, a number, a
-  promise or an `ExtendedTask`, fails the save and raises one server warning.
+- Other results, including NULL, NA, a number or an `ExtendedTask`, fail the
+  save and raise one server warning.
 - **Keep editing** cancels navigation, not a save already requested.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
 One can succeed while another fails. Nothing is rolled back. Use one tracker
 and one save for fields that must save together.
+
+For asynchronous saving, read inputs before starting the worker and return
+the promise. Configure a future worker plan when the app starts.
+
+```r
+tracker <- unsaved_track("name", on_save = function() {
+  name <- input$name
+  promises::future_promise({
+    save_record(name)
+    TRUE
+  })
+})
+```
+
+The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
+taken when the save starts, so edits made during the save stay unsaved.
+A promise that resolves to `FALSE` or any other value, or rejects, keeps the
+baseline and raises one server warning. Rejection messages stay on the server.
+Only one save per tracker can be pending; another request is ignored with a
+warning. The dialog shows "Saving..." until the reply. Keep editing cancels
+navigation only. Return the promise, not an `ExtendedTask`; for example use
+`promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
 
 ### Save errors
 

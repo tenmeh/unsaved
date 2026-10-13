@@ -11,9 +11,10 @@
 #' @param guard_clicks Guard clicks on elements marked with unsaved_guard().
 #'   Tagged tabs follow guard_nav instead.
 #' @param on_save NULL or a function with no arguments. It must finish saving
-#'   before it returns and return TRUE for success or FALSE for expected failure.
-#'   Errors also fail the save. Any other result keeps changes unsaved and
-#'   raises a server warning, including NULL, NA, promises and ExtendedTask.
+#'   before returning TRUE, or return a promise that resolves to exactly TRUE.
+#'   FALSE, errors and other results fail the save. Failed promises raise one
+#'   server warning. ExtendedTask results are unsupported; return the promise.
+#'   Edits made while a promise is pending stay unsaved.
 #' @param on_discard NULL or a function with no arguments, called after each
 #'   discard request. Errors become warnings. Inputs may not yet be restored; use
 #'   baseline() for the restored values.
@@ -83,8 +84,9 @@
 #'
 #'   With several trackers, a shared Save and leave saves each one on its own.
 #'   One can succeed while another fails; nothing is rolled back. Use one
-#'   tracker and one save for fields that must save together. Starting work
-#'   in the background and returning before it finishes is not supported.
+#'   tracker and one save for fields that must save together. Return a promise
+#'   for background work. Only one save per tracker can be pending; further
+#'   requests are ignored with a warning.
 #'
 #' @section Loading a record:
 #' Set the saved baseline before sending input updates. Here `records()` holds
@@ -373,7 +375,7 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
     .text = NULL, .compare = NULL, .on_discard = NULL, .discard_observer = NULL,
     .field_names = NULL, .pending = NULL, .confirm_observer = NULL,
     .guard_clicks = TRUE, .pause_state = NULL,
-    .current = NULL, .destroyed = FALSE,
+    .current = NULL, .destroyed = FALSE, .saving = FALSE,
     .password_ready = FALSE,
     .password_ids = NULL,
     notify_discard = function() {
@@ -432,6 +434,11 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       if (!is.list(request) || !identical(request$instance, private$.instance)) {
         return(invisible(NULL))
       }
+      if (private$.saving) {
+        warning("A save is already pending; the new save request was ignored.", call. = FALSE)
+        return(invisible(NULL))
+      }
+      snapshot <- shiny::isolate(private$.current())
       ok <- FALSE
       if (!is.null(private$.on_save)) {
         # Errors stay on the server; the browser only learns that saving failed.
@@ -445,11 +452,39 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
             FALSE
           }
         )
+        # promises is a Shiny dependency and is available whenever the app can
+        # create a promise. Keep it in Suggests and guard namespace access.
+        if (requireNamespace("promises", quietly = TRUE) && promises::is.promise(result)) {
+          private$.saving <- TRUE
+          promises::then(result,
+            onFulfilled = function(value) {
+              private$finish_save(identical(value, TRUE), snapshot)
+              if (!identical(value, TRUE)) {
+                warning("on_save() promise resolved to ", describe_value(value),
+                        "; it must resolve to TRUE. The changes are kept as unsaved.",
+                        call. = FALSE)
+              }
+              NULL
+            },
+            onRejected = function(error) {
+              private$finish_save(FALSE, snapshot)
+              detail <- if (inherits(error, "condition")) conditionMessage(error) else as.character(error)
+              warning("on_save() promise rejected: ", paste(detail, collapse = " "),
+                      ". The changes are kept as unsaved.", call. = FALSE)
+              NULL
+            }
+          )
+          return(invisible(NULL))
+        }
         ok <- identical(result, TRUE)
         if (!ok && !identical(result, FALSE)) {
           warning(
             "on_save() returned ", describe_value(result), ". ",
             "on_save() must return TRUE after it has finished saving. ",
+            if (inherits(result, "ExtendedTask")) paste0(
+              "Return the promise instead, for example promises::future_promise() ",
+              "or mirai::mirai() wrapped in a promise. "
+            ),
             "The changes are kept as unsaved.",
             call. = FALSE
           )
@@ -460,6 +495,22 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
         "unsaved:saved",
         list(instance = private$.instance, ok = ok)
       )
+    },
+    finish_save = function(ok, snapshot) {
+      private$.saving <- FALSE
+      if (private$.destroyed) return(invisible(NULL))
+      if (ok) {
+        self$mark_saved(values = snapshot)
+        # mark_saved publishes clean for record loading. An async save instead
+        # needs to publish edits made since its snapshot before the save reply.
+        shiny::isolate(private$publish(
+          changed_inputs(private$.baseline, private$.current(), private$.compare)
+        ))
+      }
+      private$.session$sendCustomMessage(
+        "unsaved:saved", list(instance = private$.instance, ok = ok)
+      )
+      invisible(NULL)
     },
     handle_confirm = function(request) {
       pending <- private$.pending

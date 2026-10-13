@@ -16,7 +16,11 @@ make_save_app <- function(save = "none", multi = FALSE, second_save = TRUE) {
     "save_callback <- function() {",
     "saved(saved() + 1L)",
     if (save == "error") "stop('Secret server detail')" else
-      if (save == "false") "return(FALSE)" else "TRUE",
+      if (save == "false") "return(FALSE)" else
+        if (save == "promise") paste0(
+          "promises::promise(function(resolve, reject) {",
+          "later::later(function() resolve(TRUE), delay = 1)})"
+        ) else "TRUE",
     "}",
     paste0("tracker <- unsaved_track(c('tabs', 'name', 'late'), on_save = ", handler, ")"),
     if (multi) paste0("second <- unsaved_track('second', on_save = ", second_handler, ")") else "",
@@ -39,6 +43,22 @@ open_dialog <- function(app) {
   app$wait_for_idle()
   app$run_js("document.querySelector('a[data-value=other]').click()")
 }
+
+test_that("promise save waits then navigates after resolution", {
+  app <- make_save_app(save = "promise")
+  open_dialog(app)
+  app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"),
+               "Saving...")
+  expect_equal(app$get_js("document.querySelector('a[data-value=form]').parentElement.classList.contains('active')"),
+               TRUE)
+  app$wait_for_js("document.querySelector('.unsaved-dialog') === null")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "tabs"), "other")
+  expect_equal(app$get_value(output = "saved_count"), "1")
+  expect_equal(badge_text(app), "")
+  expect_no_shiny_errors(app)
+})
 
 test_that("late renderUI field joins saved baseline and dialog discard restores it", {
   app <- make_save_app()

@@ -31,9 +31,10 @@ wording and may suppress the prompt without prior user interaction.}
 Tagged tabs follow guard_nav instead.}
 
 \item{on_save}{NULL or a function with no arguments. It must finish saving
-before it returns and return TRUE for success or FALSE for expected failure.
-Errors also fail the save. Any other result keeps changes unsaved and
-raises a server warning, including NULL, NA, promises and ExtendedTask.}
+before returning TRUE, or return a promise that resolves to exactly TRUE.
+FALSE, errors and other results fail the save. Failed promises raise one
+server warning. ExtendedTask results are unsupported; return the promise.
+Edits made while a promise is pending stay unsaved.}
 
 \item{on_discard}{NULL or a function with no arguments, called after each
 discard request. Errors become warnings. Inputs may not yet be restored; use
@@ -79,8 +80,9 @@ Use \code{tracker$confirm()} for server actions.
 
 With several trackers, a shared Save and leave saves each one on its own.
 One can succeed while another fails; nothing is rolled back. Use one
-tracker and one save for fields that must save together. Starting work
-in the background and returning before it finishes is not supported.
+tracker and one save for fields that must save together. Return a promise
+for background work. Only one save per tracker can be pending; further
+requests are ignored with a warning.
 }
 \section{Methods}{
 

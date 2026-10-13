@@ -66,13 +66,34 @@ start joins the baseline automatically.
 
 An `on_save` function adds **Save and leave** to the navigation dialog.
 It takes no arguments. The tracker marks values saved after it returns
-exactly `TRUE`, then opens the requested tab. Returning `FALSE` or raising
-an error keeps the edits and shows a safe failure message.
+exactly `TRUE` or its promise resolves to exactly `TRUE`, then opens the
+requested tab. Returning `FALSE` or raising an error keeps the edits and
+shows a safe failure message.
 
-`on_save()` must finish saving before it returns. Any result other than
-`TRUE` or `FALSE`, including NULL, NA, a number, a promise or an `ExtendedTask`,
-fails the save and raises one server warning.
-Keep editing cancels navigation, not a save already requested.
+Other results, including NULL, NA, a number or an `ExtendedTask`, fail the
+save and raise one server warning.
+
+For asynchronous saving, read inputs before starting the worker and return
+the promise. Configure a future worker plan when the app starts.
+
+```r
+tracker <- unsaved_track("name", on_save = function() {
+  name <- input$name
+  promises::future_promise({
+    save_record(name)
+    TRUE
+  })
+})
+```
+
+The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
+taken when the save starts, so edits made during the save stay unsaved.
+A promise that resolves to `FALSE` or any other value, or rejects, keeps the
+baseline and raises one server warning. Rejection messages stay on the server.
+Only one save per tracker can be pending; another request is ignored with a
+warning. The dialog shows "Saving..." until the reply. Keep editing cancels
+navigation only. Return the promise, not an `ExtendedTask`; for example use
+`promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
 One can succeed while another fails, and nothing is rolled back. Use one
