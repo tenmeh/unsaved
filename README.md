@@ -250,7 +250,8 @@ package warnings when a reason is involved; handle diagnostics in your app
 without exposing the reason.
 
 `tracker$ask_reason(action)` always asks, even when clean or paused, and also
-works with `require_reason = FALSE`. Its dialog has Cancel and Save buttons.
+works with `require_reason = FALSE`. Its button labels come from
+`unsaved_text(reason_cancel = "Cancel", reason_save = "Save")`.
 Cancel does nothing; Save calls `action(reason)` once. The action saves and
 calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
 pending per tracker; a second request warns and is dropped.
