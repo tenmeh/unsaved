@@ -47,6 +47,7 @@
     record.container.removeAttribute("data-unsaved");
     record.label.classList.remove("unsaved-marker");
     record.text.remove();
+    if (record.output) record.label.remove();
     var descriptions = (record.el.getAttribute("aria-describedby") || "").split(/\s+/)
       .filter(function (x) { return x && x !== record.text.id; });
     if (descriptions.length) {
@@ -84,24 +85,34 @@
       var container = output ? el :
         el.closest(".shiny-input-container") || el.closest(".form-group") || el.parentElement;
       if (!container) return;
-      var label = container.querySelector(":scope > label") ||
-        container.querySelector(":scope > label.control-label") || container.querySelector("label") || container;
       var old = marks.get(id);
-      if (old && (old.label !== label || !old.text.isConnected)) {
+      var label = output ? (old ? old.label : document.createElement("span")) :
+        container.querySelector(":scope > label") ||
+        container.querySelector(":scope > label.control-label") || container.querySelector("label") || container;
+      if (old && (old.label !== label || !old.text.isConnected ||
+          (output && old.label.nextElementSibling !== el))) {
         unmark(old);
         marks.delete(id);
       }
       container.setAttribute("data-unsaved", "true");
-      label.classList.add("unsaved-marker");
+      // An output is outlined by CSS on its own data-unsaved attribute, so a
+      // dot never takes a row of its own or shifts the layout.
+      if (!output) label.classList.add("unsaved-marker");
       if (!marks.has(id)) {
+        if (output) {
+          // The screen-reader text sits in a hidden sibling, which survives
+          // output rendering.
+          label.className = "unsaved-output-marker";
+          el.before(label);
+        }
         var text = document.createElement("span");
         text.className = "unsaved-sr";
         text.id = "unsaved-description-" + (++serial);
         var owner = Object.keys(states).find(function (key) { return markerIds(states[key]).indexOf(id) !== -1; });
         text.textContent = states[owner].text.unsaved;
-        container.appendChild(text);
+        (output ? label : container).appendChild(text);
         el.setAttribute("aria-describedby", ((el.getAttribute("aria-describedby") || "") + " " + text.id).trim());
-        marks.set(id, {el: el, container: container, label: label, text: text});
+        marks.set(id, {el: el, container: container, label: label, text: text, output: output});
       }
     });
     document.querySelectorAll(".unsaved-badge").forEach(function (badge) {
@@ -464,9 +475,18 @@
       });
     });
     window.jQuery(document).on("shiny:value", function () {
-      // Output rendering replaces children, including the screen-reader marker.
+      // Dynamic UI can replace inputs or outputs that already have markers.
       window.setTimeout(reconcile, 0);
     });
+    // Removal need not produce another server state (for example removeUI()).
+    new MutationObserver(function () {
+      var stale = false;
+      marks.forEach(function (record) {
+        if (!record.el.isConnected || !record.text.isConnected ||
+            (record.output && record.label.nextElementSibling !== record.el)) stale = true;
+      });
+      if (stale) reconcile();
+    }).observe(document.body, {childList: true, subtree: true});
     window.jQuery(document).on("shiny:disconnected", function () {
       states = Object.create(null);
       saveRequests = Object.create(null);

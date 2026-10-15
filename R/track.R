@@ -9,7 +9,7 @@
 #'   Their first results become the baseline. Data frames compare column by
 #'   column. These values never enter browser snapshots.
 #' @param value_outputs NULL or a named character vector mapping value ids to
-#'   output ids. The output container receives the marker. Use local ids in
+#'   output ids. The output is outlined while its value is changed. Use local ids in
 #'   modules. Unmapped values count towards the badge but have no marker.
 #' @param require_reason Require a reason before Save and leave. If TRUE,
 #'   on_save must have exactly one argument named reason. Otherwise it takes
