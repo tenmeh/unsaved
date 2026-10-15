@@ -201,7 +201,7 @@
       dialog.discard.disabled = false;
       dialog.save.disabled = dialog.reason && !dialog.reason.value.trim();
       if (dialog.reason) dialog.reason.disabled = false;
-      dialog.save.textContent = dialog.text.save;
+      dialog.save.textContent = dialog.reasonOnly ? dialog.text.reason_save : dialog.text.save;
       dialog.alert.textContent = dialog.text.save_failed;
       return;
     }
@@ -246,7 +246,7 @@
     discard.type = "button";
     keep.className = "btn btn-secondary";
     discard.className = "btn btn-danger";
-    keep.textContent = reasonOnly ? "Cancel" : text.keep;
+    keep.textContent = reasonOnly ? text.reason_cancel : text.keep;
     discard.textContent = text.discard;
     keep.addEventListener("click", closeDialog);
     discard.addEventListener("click", function () {
@@ -300,7 +300,7 @@
       save = document.createElement("button");
       save.type = "button";
       save.className = "btn btn-primary";
-      save.textContent = reasonOnly ? "Save" : text.save;
+      save.textContent = reasonOnly ? text.reason_save : text.save;
       save.disabled = !!needsReason;
       save.addEventListener("click", function () {
         if (!dialog || dialog.waiting) return;
@@ -353,7 +353,7 @@
     dialog = {
       text: text, backdrop: backdrop, target: target, discard: discard,
       save: save, alert: alert, waiting: false, confirmation: confirmation,
-      reason: reason,
+      reason: reason, reasonOnly: reasonOnly,
       previousFocus: previousFocus, instances: instances
     };
     keep.focus();

@@ -14,7 +14,9 @@ unsaved_text(
   save_failed = "Could not save. Your changes are still here.",
   unsaved = "(unsaved)",
   reason = "Reason for change",
-  reason_title = "Why are you making this change?"
+  reason_title = "Why are you making this change?",
+  reason_cancel = "Cancel",
+  reason_save = "Save"
 )
 }
 \arguments{
@@ -37,6 +39,10 @@ unsaved_text(
 \item{reason}{Label for the required reason text area.}
 
 \item{reason_title}{Heading for the reason-only dialog.}
+
+\item{reason_cancel}{Cancel button in the reason-only dialog.}
+
+\item{reason_save}{Save button in the reason-only dialog.}
 }
 \value{
 A classed list for unsaved_track().

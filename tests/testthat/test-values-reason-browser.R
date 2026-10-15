@@ -1,4 +1,4 @@
-make_round4_app <- function() {
+make_values_reason_app <- function(custom_text = FALSE) {
   skip_on_cran()
   path <- local_app_file(c(
     "library(shiny)",
@@ -14,6 +14,10 @@ make_round4_app <- function() {
     "own_received <- reactiveVal('none')",
     "tracker <- unsaved_track(values = list(Visits = visits),",
     "value_outputs = c(Visits = 'visits_table'), require_reason = TRUE,",
+    if (custom_text) paste0(
+      "text = unsaved_text(reason_cancel = 'Back', ",
+      "reason_save = 'Record reason'),"
+    ),
     "on_save = function(reason) { reason_received(reason); TRUE },",
     "on_discard = function() visits(tracker$baseline()$Visits))",
     "output$visits_table <- renderTable(visits())",
@@ -36,8 +40,21 @@ fill_reason <- function(app, value) {
   ))
 }
 
+test_that("reason-only dialog uses custom button labels", {
+  app <- make_values_reason_app(custom_text = TRUE)
+  app$click("own_save")
+  app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
+  expect_equal(app$get_js(
+    "document.querySelector('.unsaved-dialog .btn-secondary').textContent"
+  ), "Back")
+  expect_equal(app$get_js(
+    "document.querySelector('.unsaved-dialog .btn-primary').textContent"
+  ), "Record reason")
+  expect_no_shiny_errors(app)
+})
+
 test_that("server table edits show a badge and mapped output marker", {
-  app <- make_round4_app()
+  app <- make_values_reason_app()
   expect_equal(badge_text(app), "")
   app$click("edit")
   app$wait_for_idle()
@@ -54,7 +71,7 @@ test_that("server table edits show a badge and mapped output marker", {
 })
 
 test_that("required reason disables Save until filled and reaches on_save", {
-  app <- make_round4_app()
+  app <- make_values_reason_app()
   app$click("edit")
   app$run_js("document.querySelector('a[data-value=other]').click()")
   disabled <- "document.querySelector('.unsaved-dialog .btn-primary').disabled"
@@ -74,7 +91,7 @@ test_that("required reason disables Save until filled and reaches on_save", {
 })
 
 test_that("ask_reason browser Cancel does nothing and Save sends a bounded reason", {
-  app <- make_round4_app()
+  app <- make_values_reason_app()
   app$click("own_save")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog h2').textContent"),
