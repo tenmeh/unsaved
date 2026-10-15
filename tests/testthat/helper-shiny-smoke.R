@@ -58,6 +58,12 @@ local_app_driver <- function(app_dir, ..., .local_envir = parent.frame()) {
   # A slow CI runner can miss chromote's 10-second wait for the first page
   # load. Try once more on a time-out; a real failure fails twice.
   start_app <- function() {
+    # A bslib app compiles its theme with Sass on the first page request. Each
+    # test app runs in a fresh temporary directory, so the compile is never
+    # cached and takes about 13 seconds here, past chromote's default
+    # 10-second wait for a page load. Wait longer.
+    chrome <- chromote::default_chromote_object()
+    chrome$default_timeout <- max(chrome$default_timeout, 60)
     tryCatch(shinytest2::AppDriver$new(app_dir, ...), error = function(e) {
       if (!grepl("timed out", conditionMessage(e), fixed = TRUE)) stop(e)
       shinytest2::AppDriver$new(app_dir, ...)
@@ -72,5 +78,9 @@ local_app_driver <- function(app_dir, ..., .local_envir = parent.frame()) {
     app$stop()
     unlink(chrome_tmp, recursive = TRUE)
   }, envir = .local_envir)
+  # Let every tracker on the page get its field report before a test edits
+  # anything (see wait_for_tracker()). An app with no tracker yet just waits
+  # out the short limit.
+  try(wait_for_tracker(app, timeout = 5000), silent = TRUE)
   app
 }

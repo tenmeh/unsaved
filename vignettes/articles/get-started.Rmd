@@ -41,6 +41,7 @@ server <- function(input, output, session) {
   saved_name <- reactiveVal("Ada")
   save_record <- function() {
     saved_name(input$name)
+    TRUE
   }
   tracker <- unsaved_track("name", on_save = save_record)
   observeEvent(input$save, {
@@ -65,12 +66,12 @@ start joins the baseline automatically.
 
 An `on_save` function adds **Save and leave** to the navigation dialog.
 It takes no arguments. The tracker marks values saved after it returns
-successfully, then opens the requested tab. Returning `FALSE` or raising
+exactly `TRUE`, then opens the requested tab. Returning `FALSE` or raising
 an error keeps the edits and shows a safe failure message.
 
-`on_save()` must finish saving before it returns. A promise or an
-`ExtendedTask` counts as a failed save and raises a warning. Starting a
-background save and returning another value is also outside this contract.
+`on_save()` must finish saving before it returns. Any result other than
+`TRUE` or `FALSE`, including NULL, NA, a number, a promise or an `ExtendedTask`,
+fails the save and raises one server warning.
 Keep editing cancels navigation, not a save already requested.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
@@ -114,7 +115,7 @@ Storage errors are logged on the server; their details do not reach the browser.
 The guard stops tab clicks, arrow keys and `updateTabsetPanel()` while the
 form is dirty. The user can keep editing, discard, or save and leave.
 Call `mark_saved()`, `discard()` (and wait for the restored inputs), or
-`pause()` before navigating from the server. `resume()` restarts tracking.
+`pause()` before navigating from the server. `resume()` restores the guards and markers.
 Set `guard_nav = FALSE` to turn off the navigation guard.
 
 The close or refresh guard uses the browser's own warning. Browsers may
@@ -131,14 +132,13 @@ This server recipe assumes `pages` contains the form steps and a `home` tab:
 
 ```r
 tracker <- unsaved_track(c("name", "age"), guard_nav = FALSE)
-observeEvent(input$exit, {
-  tracker$confirm(function() updateTabsetPanel(session, "pages", "home"))
-})
+# In the UI: unsaved_guard(actionButton("exit", "Exit form"))
+observeEvent(input$exit, updateTabsetPanel(session, "pages", "home"))
 ```
 
-The browser close guard remains active. `unsaved_guard()` can guard exit
-buttons or links when `guard_nav = TRUE`. It has no effect when that option
-is `FALSE`, so use `tracker$confirm()` for this multi-step pattern.
+The browser close guard remains active. `unsaved_guard()` uses
+`guard_clicks = TRUE` independently of `guard_nav`. Use `tracker$confirm()`
+for server actions. Tagged tabs always follow `guard_nav`.
 
 ## Field labels and the change list
 
@@ -181,6 +181,16 @@ Numeric values use `all.equal()` with relative tolerance `1e-8`. Near zero,
 warnings. After a direct `discard()` call, inputs may not yet have returned
 from the browser; use `baseline()` for saved values.
 
+A direct `discard()` is a request: the browser restores the inputs later.
+Read the baseline in the callback:
+
+```r
+on_discard = function() {
+  saved_values <- tracker$baseline()
+  # Use this snapshot, not the not-yet-restored input values.
+}
+```
+
 Restoration is tested with these Shiny inputs:
 
 - Text and text area inputs, and numeric inputs.
@@ -202,8 +212,8 @@ observeEvent(input$load, {
 })
 ```
 
-Clean or paused trackers run the action at once. Dirty trackers open the
-dialog. Keep editing cancels. Discard restores, calls `on_discard`, then
+Clean trackers run the action at once. Dirty trackers open the dialog even
+while paused. Keep editing cancels. Discard restores, calls `on_discard`, then
 runs the action once. Save and leave runs it only after a successful save.
 Only one confirmation per tracker can be pending. Calling `confirm()` again
 while waiting warns and drops the new action without running or queuing it.
@@ -219,11 +229,14 @@ unsaved_guard(tags$a(href = "/another-page", "Another page"))
 ```
 
 Modal close buttons can use the same attribute. Dirty trackers with
-`guard_nav = TRUE` block the click; discard or a successful save replays it.
+`guard_clicks = TRUE` block the click; discard or a successful save replays it.
 
 ## Loading a record
 
-The showcase pauses tracking before it updates inputs. It waits for all the
+While paused, `is_dirty()`, `count()`, `changed()` and `diff()` still report
+real differences. Use reactive `is_paused()` to show a loading state.
+
+The showcase pauses guards and markers before it updates inputs. It waits for all the
 new values to return from the browser, marks them saved and resumes tracking.
 Here `records()` is your app's list of saved records, each with two text fields:
 
@@ -254,7 +267,7 @@ observe({
 })
 ```
 
-Disable editing and saving while a load is pending, as tracking is paused.
+Disable editing and saving while a load is pending, as guards are paused.
 Check every updated field, using the type its input binding returns. Calling
 `mark_saved()` right after `update*Input()` is wrong: the browser has not yet
 received the updates, so the server still holds the old values. A field that
@@ -262,7 +275,7 @@ appears later takes its first value as saved.
 
 ## Editing inside a modal
 
-Keep `guard_nav = TRUE` and guard the explicit close button. This server
+Keep `guard_clicks = TRUE` and guard the explicit close button. This server
 recipe tracks a text field created inside the modal:
 
 ```r
@@ -284,6 +297,23 @@ server actions before they remove the modal. Add `on_save` and your app's save
 code if the dialog should also offer Save and leave.
 
 ## Modules
+
+For a module-local count, use a custom output. The built-in badge shows the
+page total. Each module can use this pattern:
+
+```r
+editor_ui <- function(id) {
+  ns <- NS(id)
+  tagList(textInput(ns("name"), "Name"), textOutput(ns("count")))
+}
+editor_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    tracker <- unsaved_track("name")
+    output$count <- renderText(paste(tracker$count(), "changed fields"))
+    tracker
+  })
+}
+```
 
 Create the tracker inside `moduleServer()` with local input ids. Do not
 prefix them with `session$ns()`. Save, discard and navigation events stay

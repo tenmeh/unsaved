@@ -8,7 +8,7 @@ unsaved_guard(tag)
 }
 \arguments{
 \item{tag}{An htmltools tag, such as an action button, modal close button
-or plain link. Dirty trackers with guard_nav = TRUE guard the click.}
+or plain link. Dirty trackers with guard_clicks = TRUE guard the click.}
 }
 \value{
 The tag with the data-unsaved-guard attribute and client assets.

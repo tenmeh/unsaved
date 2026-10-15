@@ -1,5 +1,6 @@
-test_that("confirm validates actions and runs clean or paused actions immediately", {
+test_that("confirm validates actions and paused dirty trackers still ask", {
   shiny::testServer(function(input, output, session) {
+    log <- capture_messages(session)
     tracker <- unsaved_track("name")
     state <- new.env()
     state$calls <- 0L
@@ -13,6 +14,14 @@ test_that("confirm validates actions and runs clean or paused actions immediatel
     expect_equal(state$calls, 1L)
     session$setInputs(name = "Grace")
     tracker$pause()
+    tracker$confirm(action)
+    expect_equal(state$calls, 1L)
+    requests <- Filter(function(sent) sent$type == "unsaved:confirm", log$messages)
+    expect_length(requests, 1L)
+    request <- c(requests[[1]]$message, list(choice = "keep"))
+    session$setInputs(unsaved_confirm_requested = request)
+    expect_equal(state$calls, 1L)
+    tracker$mark_saved()
     tracker$confirm(action)
     expect_equal(state$calls, 2L)
   })

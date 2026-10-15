@@ -15,7 +15,7 @@ server <- function(input, output, session) {
     }
     current[[active()]] <- record
     records(current)
-    invisible(TRUE)
+    TRUE
   }
   text_ids <- c("name", "location", "bio", "contact")
   text_compare <- setNames(rep(list(unsaved_compare_text()), length(text_ids)), text_ids)
@@ -39,7 +39,7 @@ server <- function(input, output, session) {
   })
 
   output$status <- renderText({
-    if (loading()) return("Loading profile...")
+    if (tracker$is_paused()) return("Loading profile...")
     n <- tracker$count()
     if (n == 0L) return("All changes saved.")
     if (n == 1L) return("1 field differs from the saved profile.")
@@ -93,6 +93,7 @@ server <- function(input, output, session) {
     paste(value, collapse = ", ")
   }
   output$changes <- renderUI({
+    if (tracker$is_paused()) return(tags$p("Loading profile..."))
     changes <- tracker$diff()
     if (!nrow(changes)) return(tags$p("No unsaved changes. Try editing a field."))
     tagList(lapply(seq_len(nrow(changes)), function(i) {

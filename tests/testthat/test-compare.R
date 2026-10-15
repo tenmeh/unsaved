@@ -70,7 +70,13 @@ test_that("text comparison handles empty, missing, whitespace and non-text value
   expect_equal(unsaved_compare_text(empty_is_null = FALSE)("", NULL), FALSE)
   expect_equal(compare(NA_character_, ""), FALSE)
   for (bad in list(NULL, NA, c(TRUE, FALSE), 1)) {
-    expect_error(unsaved_compare_text(trim = bad), "logical values")
-    expect_error(unsaved_compare_text(empty_is_null = bad), "logical values")
+    expect_error(unsaved_compare_text(trim = bad), "TRUE or FALSE")
+    expect_error(unsaved_compare_text(empty_is_null = bad), "TRUE or FALSE")
   }
+})
+test_that("text flags name invalid values", {
+  expect_error(unsaved_compare_text(trim = "yes"),
+               '`trim` must be TRUE or FALSE; got "yes".', fixed = TRUE)
+  expect_error(unsaved_compare_text(empty_is_null = "yes"),
+               '`empty_is_null` must be TRUE or FALSE; got "yes".', fixed = TRUE)
 })

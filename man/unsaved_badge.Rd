@@ -2,24 +2,30 @@
 % Please edit documentation in R/ui.R
 \name{unsaved_badge}
 \alias{unsaved_badge}
-\title{Display the Number of Unsaved Changes}
+\title{Display the Page Total of Unsaved Changes}
 \usage{
 unsaved_badge(label = "{n} unsaved change{s}", class = NULL)
 }
 \arguments{
 \item{label}{Text template. \code{{n}} is the count; \code{{s}} is the plural suffix.}
 
-\item{class}{Optional additional CSS classes.}
+\item{class}{NULL or a character vector of additional CSS classes, without NA.}
 }
 \value{
 A span filled by the client, with the package assets attached.
 }
 \description{
-Display the Number of Unsaved Changes
+Show the page total of distinct changed fields across trackers.
 }
 \details{
-Badges show the number of distinct dirty fields across all trackers.
+Badges show the number of distinct dirty fields across all active
+trackers, including modules. Paused trackers do not contribute.
+For a module-local count, use a textOutput() in the module UI and
+\code{output$count <- shiny::renderText(tracker$count())} in its server.
 }
 \examples{
 unsaved_badge()
+}
+\seealso{
+\code{\link[=unsaved_track]{unsaved_track()}} for reactive tracker query methods.
 }

@@ -299,7 +299,7 @@
     dialog = {
       text: text, backdrop: backdrop, target: target, discard: discard,
       save: save, alert: alert, waiting: false, confirmation: confirmation,
-      previousFocus: previousFocus
+      previousFocus: previousFocus, instances: instances
     };
     keep.focus();
   }
@@ -313,7 +313,8 @@
   function guardNavigation(e, target) {
     if (bypass || !target || (target.matches(selector) && isActive(target))) return;
     var instances = Object.keys(states).filter(function (id) {
-      return states[id].guardNav && states[id].ids.length;
+      var enabled = target.matches(selector) ? states[id].guardNav : states[id].guardClicks;
+      return enabled && states[id].ids.length;
     });
     if (!instances.length) return;
     e.preventDefault();
@@ -348,6 +349,7 @@
       var current = state(message.instance);
       current.inputs = message.baseline || {};
       current.guardNav = message.guardNav;
+      current.guardClicks = message.guardClicks;
       current.guardUnload = message.guardUnload;
       current.canSave = message.canSave;
       current.saveInput = message.saveInput;
@@ -370,6 +372,12 @@
       restore(message.inputs || {});
     });
     window.Shiny.addCustomMessageHandler("unsaved:saved", saveReply);
+    window.Shiny.addCustomMessageHandler("unsaved:remove", function (message) {
+      delete states[message.instance];
+      delete saveRequests[message.instance];
+      if (dialog && dialog.instances.indexOf(message.instance) !== -1) closeDialog(false);
+      reconcile();
+    });
     window.Shiny.addCustomMessageHandler("unsaved:confirm", function (message) {
       showDialog(null, [message.instance], message);
     });

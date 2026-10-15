@@ -63,8 +63,16 @@ test_that("bslib navsets expose tab ids and stay clean", {
 
 test_that("Bootstrap 5 arrow keys and programmatic shows are guarded", {
   app <- make_navigation_app(bs5 = TRUE)
+  # This Bootstrap 5 page loads slowly; edit only once the tracker is ready.
+  wait_for_tracker(app)
   app$set_inputs(name = "Grace")
   app$wait_for_idle()
+  # On this heavier Bootstrap 5 page, wait_for_idle() can return before the
+  # browser has applied the server's dirty state. Wait for the badge first.
+  app$wait_for_js(
+    "document.querySelector('.unsaved-badge').textContent !== ''",
+    timeout = 10000
+  )
   # Send the key to the tab link itself. On a slow runner focus() may not take,
   # and a key sent to document.activeElement would then miss the tab list.
   app$run_js("
