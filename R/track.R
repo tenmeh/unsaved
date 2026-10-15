@@ -1,4 +1,6 @@
 #' Track Unsaved Input Changes
+#' @description Help users of Shiny forms see edits they have not saved and
+#'   ask before they lose them. The app validates and saves its own data.
 #' @param inputs Required non-empty character vector of unique input ids.
 #'   Optional names are field labels; an empty name uses the id.
 #' @param guard_nav Guard clicks, keyboard and programmatic tab navigation,
@@ -6,14 +8,18 @@
 #'   discard() (and wait for restored inputs), or pause() first.
 #' @param guard_unload Warn on browser close or refresh. Browsers use generic
 #'   wording and may suppress the prompt without prior user interaction.
-#' @param on_save NULL or a function with no arguments. Returning without error,
-#'   except exactly FALSE, marks the inputs saved and permits navigation.
+#' @param on_save NULL or a function with no arguments. It must finish saving
+#'   before it returns. Returning without error, except exactly FALSE or an
+#'   asynchronous result, marks the inputs saved and permits navigation.
+#'   A promise or ExtendedTask counts as a failed save and raises a warning.
 #' @param on_discard NULL or a function with no arguments, called after each
 #'   discard. Errors become warnings. Inputs may not yet be restored; use
 #'   baseline() for the restored values.
 #' @param compare NULL for tolerant comparison, one function for all inputs,
 #'   or a named list of functions keyed by tracked input id. Functions take
 #'   saved and current values and return a single non-NA logical for equality.
+#'   Numeric values use all.equal() with relative tolerance 1e-8 (absolute near
+#'   zero). For exact amounts or ids, use `compare = list(amount = identical)`.
 #' @param text Text returned by unsaved_text(). A shared dialog uses the
 #'   text of its first involved tracker.
 #' @param session The current Shiny session.
@@ -27,6 +33,7 @@
 #'   confirm(action) runs a function with no arguments at once when clean or
 #'   paused. Otherwise it asks for confirmation and runs the action after
 #'   discard or a successful save. Keep editing cancels the pending action.
+#'   It does not cancel a save already requested.
 #'   Calling confirm() while a confirmation is pending warns and drops the
 #'   new action; it is not run or queued.
 #' @details Initial values are captured after the first reactive flush and
@@ -42,6 +49,74 @@
 #'   Save and leave waits for a server round trip. Errors are caught without
 #'   sending their messages to the browser. Discard sends JSON, so exotic R
 #'   objects may not round-trip. Use module-local ids inside moduleServer().
+#'
+#'   The navigation guard and badges cover the whole page, not one form.
+#'   For a multi-step form, use `guard_nav = FALSE` and `tracker$confirm()`
+#'   at the real exit points. For example:
+#'   `tracker$confirm(function() shiny::updateTabsetPanel(session, "pages", "home"))`.
+#'   Alternatively, unsaved_guard() guards exit buttons and links when
+#'   `guard_nav = TRUE`; it has no effect with `guard_nav = FALSE`.
+#'
+#'   With several trackers, a shared Save and leave saves each one on its own.
+#'   One can succeed while another fails; nothing is rolled back. Use one
+#'   tracker and one save for fields that must save together. Starting work
+#'   in the background and returning before it finishes is not supported.
+#'
+#' @section Loading a record:
+#' Pause tracking, update inputs, wait for all their values to arrive from the
+#' browser, call mark_saved(), then resume(). Calling mark_saved() immediately
+#' after updateTextInput() captures old server values. For a tracker listing
+#' `name`, with `record` holding the new saved name, the server pattern is:
+#' ```r
+#' pending_record <- shiny::reactiveVal(NULL)
+#' load_record <- function(record) {
+#'   tracker$pause()
+#'   pending_record(record)
+#'   shiny::updateTextInput(session, "name", value = record$name)
+#' }
+#' shiny::observe({
+#'   record <- pending_record()
+#'   shiny::req(!is.null(record))
+#'   if (identical(input$name, record$name)) {
+#'     tracker$mark_saved()
+#'     tracker$resume()
+#'     pending_record(NULL)
+#'   }
+#' })
+#' ```
+#' Use confirm() before loading over edits. Disable editing, saving and further
+#' loads while waiting. Check every updated field, using its binding's type.
+#' A field appearing later takes its first value as saved.
+#'
+#' @section Save errors:
+#' The app must log errors inside on_save(), then return FALSE. The browser
+#' only sees the generic save failure message. For example:
+#' ```r
+#' on_save <- function() {
+#'   tryCatch({
+#'     save_record(input$name)
+#'     TRUE
+#'   }, error = function(error) {
+#'     message("Save failed: ", conditionMessage(error))
+#'     FALSE
+#'   })
+#' }
+#' ```
+#' Replace message() with your app's logger if needed. After correcting the
+#' problem, select Save and leave again to retry.
+#'
+#' @section Limits:
+#' Dirty state needs a round trip to the server. An edit made while the server
+#' is busy is protected only once the server has seen it and sent the new state
+#' back to the browser. Browser close warnings may be suppressed.
+#'
+#' discard() restores saved values through supported Shiny bindings. It is
+#' tested with text, text area and numeric inputs; radio buttons, checkboxes
+#' and checkbox groups; select inputs with the default selectize binding;
+#' date inputs and ranges; numeric sliders and ranges; date sliders and ranges;
+#' and date-time sliders. It cannot restore file uploads, password fields or
+#' inputs without a Shiny binding. Missing elements are skipped. It does not
+#' undo app-side writes to storage.
 #' @examples
 #' if (interactive()) {
 #'   shiny::shinyApp(
@@ -295,10 +370,19 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       ok <- FALSE
       if (!is.null(private$.on_save)) {
         # Errors stay on the server; the browser only learns that saving failed.
-        ok <- tryCatch(
-          !identical(private$.on_save(), FALSE),
+        result <- tryCatch(
+          private$.on_save(),
           error = function(error) FALSE
         )
+        asynchronous <- inherits(result, c("promise", "ExtendedTask"))
+        if (asynchronous) {
+          warning(
+            "on_save() must finish saving before it returns. ",
+            "It returned an asynchronous result, so the changes are kept as unsaved.",
+            call. = FALSE
+          )
+        }
+        ok <- !asynchronous && !identical(result, FALSE)
       }
       if (ok) self$mark_saved()
       private$.session$sendCustomMessage(

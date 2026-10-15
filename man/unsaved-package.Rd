@@ -4,11 +4,11 @@
 \name{unsaved-package}
 \alias{unsaved}
 \alias{unsaved-package}
-\title{Track and Guard Unsaved Changes in Shiny Apps}
+\title{Unsaved Change Tracking for 'shiny' Forms}
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 
-Tracks changes to input values in 'shiny' applications, marks changed fields, and guards navigation with a client-side confirmation dialog. Applications retain responsibility for saving their data.
+Helps users of 'shiny' forms see which edits they have not saved, and asks before they leave or take an action that would lose them. Compares the inputs an application lists with the values it last saved, marks changed fields, counts and summarises the changes, and guards tab changes, chosen buttons and links, and closing the browser. Applications remain responsible for validating and saving their data.
 }
 \seealso{
 Useful links:

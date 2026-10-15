@@ -73,6 +73,97 @@ action_dialog <- function(app, button = "confirm") {
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
 }
 
+test_that("disconnect during server confirmation clears the dialog and unload guard", {
+  app <- make_action_app()
+  app$run_js("
+    window.disconnectErrors = [];
+    window.addEventListener('error', function(event) {
+      window.disconnectErrors.push(event.message);
+    });
+    window.unloadEvents = [];
+    ['addEventListener', 'removeEventListener'].forEach(function(key) {
+      var original = window[key];
+      window[key] = function(type) {
+        if (type === 'beforeunload') window.unloadEvents.push(key);
+        return original.apply(this, arguments);
+      };
+    });
+  ")
+  action_dialog(app)
+  expect_equal(app$get_js("window.unloadEvents.join(',')"), "addEventListener")
+  expect_equal(marker_count(app), 1)
+  app$run_js("
+    window.disconnectReplies = 0;
+    var originalInput = Shiny.setInputValue;
+    Shiny.setInputValue = function(id) {
+      if (id.indexOf('unsaved_confirm_requested') !== -1) window.disconnectReplies++;
+      return originalInput.apply(this, arguments);
+    };
+    try {
+      window.jQuery(document).trigger('shiny:disconnected');
+    } catch (error) {
+      window.disconnectErrors.push(error.message);
+    }
+  ")
+  expect_equal(app$get_js("window.disconnectErrors.join('|')"), "")
+  expect_equal(app$get_js("window.disconnectReplies"), 0)
+  expect_null(app$get_js("document.querySelector('.unsaved-dialog')"))
+  expect_equal(app$get_js("window.unloadEvents.join(',')"), "addEventListener,removeEventListener")
+  expect_equal(app$get_js("
+    (() => {
+      var event = new Event('beforeunload', {cancelable: true});
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    })()
+  "), FALSE)
+  expect_equal(marker_count(app), 0)
+  expect_equal(badge_text(app), "")
+  expect_no_shiny_errors(app)
+})
+
+test_that("server confirmation restores previous focus on close", {
+  app <- make_action_app()
+  app$set_inputs(name = "Grace")
+  app$wait_for_idle()
+  for (choice in c("keep", "escape", "discard", "save")) {
+    app$set_inputs(name = paste("Grace", choice))
+    app$wait_for_idle()
+    app$run_js("
+      document.getElementById('name').focus();
+      document.getElementById('confirm').click();
+    ")
+    app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
+    expect_equal(app$get_js("document.activeElement.textContent"), "Keep editing")
+    if (choice == "escape") {
+      app$run_js("
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Escape', bubbles: true, cancelable: true
+        }));
+      ")
+    } else {
+      button <- switch(choice, keep = "secondary", discard = "danger", save = "primary")
+      app$run_js(paste0("document.querySelector('.unsaved-dialog .btn-", button, "').click()"))
+    }
+    app$wait_for_idle()
+    expect_null(app$get_js("document.querySelector('.unsaved-dialog')"))
+    expect_equal(app$get_js("document.activeElement.id"), "name", info = choice)
+  }
+  expect_no_shiny_errors(app)
+})
+
+test_that("server confirmation tolerates removal of the previous focus element", {
+  app <- make_action_app()
+  app$run_js("document.getElementById('name').focus()")
+  action_dialog(app)
+  app$run_js("
+    document.getElementById('name').remove();
+    document.querySelector('.unsaved-dialog .btn-secondary').click();
+  ")
+  app$wait_for_idle()
+  expect_null(app$get_js("document.querySelector('.unsaved-dialog')"))
+  expect_no_shiny_errors(app)
+})
+
 test_that("clean confirm runs immediately without a dialog", {
   app <- make_action_app()
   app$click("confirm")

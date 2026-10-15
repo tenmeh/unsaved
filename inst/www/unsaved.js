@@ -159,7 +159,7 @@
   function closeDialog(cancel) {
     if (!dialog) return;
     if (cancel !== false) confirmReply("keep");
-    var target = dialog.target;
+    var target = dialog.target || dialog.previousFocus;
     dialog.backdrop.remove();
     dialog = null;
     if (target && target.isConnected) target.focus();
@@ -202,6 +202,7 @@
       }
       return;
     }
+    var previousFocus = document.activeElement;
     var text = states[instances[0]].text;
     var backdrop = document.createElement("div");
     backdrop.className = "unsaved-backdrop";
@@ -297,7 +298,8 @@
     document.body.appendChild(backdrop);
     dialog = {
       text: text, backdrop: backdrop, target: target, discard: discard,
-      save: save, alert: alert, waiting: false, confirmation: confirmation
+      save: save, alert: alert, waiting: false, confirmation: confirmation,
+      previousFocus: previousFocus
     };
     keep.focus();
   }
@@ -385,7 +387,7 @@
       states = Object.create(null);
       saveRequests = Object.create(null);
       passwordReports = Object.create(null);
-      closeDialog();
+      closeDialog(false);
       reconcile();
     });
   }

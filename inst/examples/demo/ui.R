@@ -37,7 +37,7 @@ ui <- page_sidebar(
         tags$strong("Try this:"),
         "Edit the name and watch the dot, the badge and the change list.",
         "Then click the Preferences tab, and choose Save and leave in the dialog.",
-        "Nothing leaves your browser: the records live in this session only."
+        "Records stay in memory for this session only."
       )
     )
   ),

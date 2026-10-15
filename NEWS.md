@@ -1,5 +1,8 @@
 # unsaved 0.1.0
 
+* Disconnecting with a server confirmation open closes the dialog and clears the guards.
+* `on_save()` rejects asynchronous results and keeps the changes unsaved.
+* `confirm()` restores focus to the previous element when the dialog closes.
 * First release.
 * Trackers support local input ids inside Shiny modules.
 * Password fields are never tracked or sent in saved client snapshots.

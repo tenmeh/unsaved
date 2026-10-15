@@ -6,8 +6,12 @@
 
 [Try the live demo](https://tenmeh.github.io/unsaved/articles/live-demo.html).
 
-Show a 'shiny' user which fields they have changed and not saved, and stop
-them from losing those changes by accident.
+`unsaved` helps users of Shiny forms see what they have changed and not saved,
+and asks before they lose it. It marks changed fields, counts the changes, and
+asks before a tab change, a guarded button or a closed browser tab would discard
+them. Use it for record editors, settings pages and data-entry forms: anywhere
+with a Save button. Your app saves the data; `unsaved` tracks the values you
+tell it are saved.
 
 - Changed fields get a marker next to their label.
 - A badge shows the count, for example "2 unsaved changes".
@@ -46,6 +50,9 @@ shinyApp(ui, server)
 Run a larger demo with
 `shiny::runApp(system.file("examples/demo", package = "unsaved"))`.
 
+The navigation guard and badges cover the whole page, not one form. Every
+badge counts distinct changed fields across all trackers, including modules.
+
 ## The tracker
 
 `unsaved_track(inputs)` returns a tracker. `inputs` is required: list the ids of
@@ -64,7 +71,7 @@ A reported password id stays excluded for the life of its tracker.
 | `diff()` | Reactive. A change summary with field labels and saved/current list columns. |
 | `baseline()` | The saved values, as a named list. Not reactive. |
 | `mark_saved()` | Call after your app saves. The current values become the saved values. |
-| `discard()` | Put every input back to its saved value. |
+| `discard()` | Restore saved values through supported input bindings. |
 | `pause()`, `resume()` | Stop and restart tracking, markers and guards. |
 | `confirm(action)` | Run a function now if clean or paused; otherwise ask before running it. |
 
@@ -88,8 +95,9 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 })
 ```
 
-- If `on_save()` finishes without an error, the tracker marks the values saved
-  and the user goes to the tab they clicked.
+- `on_save()` must finish saving before it returns. If it finishes without an
+  error and does not return `FALSE` or an asynchronous result, the tracker
+  marks the values saved and the user goes to the tab they clicked.
 - If `on_save()` stops with an error or returns `FALSE`, the user stays on the
   tab, keeps their changes, and sees "Could not save. Your changes are still
   here." The error message stays on the server.
@@ -98,12 +106,55 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 - With more than one tracker, the button shows only when every tracker with
   unsaved changes has an `on_save`.
 
+A promise or an `ExtendedTask` counts as a failed save and raises a warning.
+Starting work in the background and returning another value is also outside
+the save contract. **Keep editing** cancels navigation, not a save already
+requested.
+
+With several trackers, a shared Save and leave saves each tracker on its own.
+One can succeed while another fails. Nothing is rolled back. Use one tracker
+and one save for fields that must save together.
+
+### Save errors
+
+Log errors inside your app's `on_save`, then return `FALSE`. The browser only
+sees the generic message "Could not save. Your changes are still here."
+
+```r
+tracker <- unsaved_track(c("name", "age"), on_save = function() {
+  tryCatch({
+    save_record(input$name, input$age)
+    TRUE
+  }, error = function(error) {
+    message("Save failed: ", conditionMessage(error))  # server log
+    FALSE
+  })
+})
+```
+
+Use your app's logger in place of `message()` if needed. After correcting the
+problem, the user can select Save and leave again to retry.
+
 ## The navigation guard
 
 While there are unsaved changes, the guard stops every tab change: a click, the
 arrow keys, and `updateTabsetPanel()` from the server. To move tabs from the
 server while dirty, call `mark_saved()`, `discard()` or `pause()` first. Use
 `guard_nav = FALSE` to turn the guard off.
+
+For a multi-step form, allow movement between steps and confirm at the real
+exit points:
+
+```r
+tracker <- unsaved_track(c("name", "age"), guard_nav = FALSE)
+observeEvent(input$exit, {
+  tracker$confirm(function() updateTabsetPanel(session, "pages", "home"))
+})
+```
+
+`unsaved_guard()` is another way to guard an exit button or link when
+`guard_nav = TRUE`. It does not guard clicks when `guard_nav = FALSE`; use
+`tracker$confirm()` for the multi-step pattern above.
 
 Each blocked change also sets the input `unsaved_nav_blocked`, so your app can
 react to it. Inside a module this input uses the module's namespace.
@@ -152,9 +203,64 @@ one non-missing logical: TRUE means equal. Use a named list to apply functions
 by input id, for example `compare = list(name = unsaved_compare_text())`.
 Other fields use the default comparison, including its numeric tolerance.
 
+Numeric values use `all.equal()` with tolerance `1e-8`. This is a relative
+tolerance except near zero, where `all.equal()` uses an absolute difference.
+For exact amounts or ids, use `compare = list(amount = identical)`.
+
 `on_discard = function() ...` runs after server or dialog discard. Errors
 become warnings. For a direct `discard()` call the restored inputs may not
 have reached the server yet; use `tracker$baseline()` for their saved values.
+
+Restoration is tested with these Shiny inputs:
+
+- Text and text area inputs, and numeric inputs.
+- Radio buttons, checkboxes and checkbox groups.
+- Select inputs (the default selectize binding).
+- Date inputs and date ranges.
+- Numeric sliders and ranges, date sliders and ranges, and date-time sliders.
+
+`discard()` cannot restore file uploads, password fields or inputs without a
+Shiny binding. Password fields are not tracked. Missing input elements are
+skipped. Discard does not undo changes your app has already made to storage.
+
+## Loading a record
+
+Pause tracking, update the inputs, wait for the new values to arrive from the
+browser, mark them saved, then resume. This server recipe loads two text fields
+from your app's `records()` list:
+
+```r
+pending_record <- reactiveVal(NULL)
+observeEvent(input$load, {
+  req(is.null(pending_record()))
+  record_id <- input$record
+  tracker$confirm(function() {
+    record <- records()[[record_id]]
+    tracker$pause()
+    pending_record(record)
+    updateTextInput(session, "name", value = record$name)
+    updateTextInput(session, "location", value = record$location)
+  })
+})
+observe({
+  record <- pending_record()
+  req(!is.null(record))
+  ready <- identical(input$name, record$name) &&
+    identical(input$location, record$location)
+  if (ready) {
+    tracker$mark_saved()
+    tracker$resume()
+    pending_record(NULL)
+  }
+})
+```
+
+Here the tracker must list `name` and `location`. Disable editing and saving
+while a load is pending, as tracking is paused. Wait for every field that you
+update, using the type its input binding returns. Calling `mark_saved()` right
+after `update*Input()` is wrong: the updates have not reached the browser yet,
+so it captures the old server values. A field that appears later takes its
+first value as saved.
 
 ## Modules and rewind
 
@@ -171,6 +277,9 @@ inside a text box uses the browser's own undo.
 
 ## Limits
 
+- Dirty state needs a round trip to the server. An edit made while the server
+  is busy is protected only once the server has seen it and sent the new state
+  back to the browser.
 - Browsers show their own close or refresh warning, ignore any custom text, and
   may not show it at all if the user has not used the page. Treat it as a
   courtesy, not a guarantee.
@@ -180,6 +289,14 @@ inside a text box uses the browser's own undo.
   may not come back exactly. A file input cannot get its file back.
 - An input inside a `renderUI()` that has not rendered yet is not tracked until
   it appears.
+
+## What unsaved does not do
+
+- Track grid edits in DT or rhandsontable as a whole table. An edit event is
+  not the whole table; these editors need an app-specific adapter.
+- Put back an uploaded file.
+- Recover a lost session or its unsaved edits.
+- Resolve conflicts between two users editing the same record.
 
 ## For CSS
 

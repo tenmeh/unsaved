@@ -1,7 +1,9 @@
 Ada
 Bootstrap
 CMD
+DT
 Dialog
+ExtendedTask
 JSON
 Poppins
 Shiny
@@ -21,8 +23,10 @@ reactive
 redo
 rewind
 rewind's
+rhandsontable
 rootScope
 roxygen
+selectize
 shinylive
 shinytest2
 snapshotted
@@ -31,4 +35,5 @@ tabset
 unsaved
 unsaved's
 updateTabsetPanel
+updateTextInput
 webR
