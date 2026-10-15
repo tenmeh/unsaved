@@ -5,7 +5,7 @@
 \title{Track Unsaved Input Changes}
 \usage{
 unsaved_track(
-  inputs,
+  inputs = character(),
   guard_nav = TRUE,
   guard_unload = TRUE,
   guard_clicks = TRUE,
@@ -13,11 +13,15 @@ unsaved_track(
   on_discard = NULL,
   compare = NULL,
   text = unsaved_text(),
+  values = NULL,
+  value_outputs = NULL,
+  require_reason = FALSE,
   session = shiny::getDefaultReactiveDomain()
 )
 }
 \arguments{
-\item{inputs}{Required non-empty character vector of unique input ids.
+\item{inputs}{Character vector of unique input ids. May be empty when
+values are supplied. At least one input or value must be supplied.
 Optional names are field labels; an empty name uses the id.}
 
 \item{guard_nav}{Guard tab clicks, keyboard and programmatic tab navigation,
@@ -30,7 +34,8 @@ wording and may suppress the prompt without prior user interaction.}
 \item{guard_clicks}{Guard clicks on elements marked with unsaved_guard().
 Tagged tabs follow guard_nav instead.}
 
-\item{on_save}{NULL or a function with no arguments. It must finish saving
+\item{on_save}{NULL or a function with no arguments (or one argument named
+reason when require_reason is TRUE). It must finish saving
 before returning TRUE, or return a promise that resolves to exactly TRUE.
 FALSE, errors and other results fail the save. Failed promises raise one
 server warning. ExtendedTask results are unsupported; return the promise.
@@ -48,6 +53,19 @@ zero). For exact amounts or ids, use \code{compare = list(amount = identical)}.}
 
 \item{text}{Text returned by unsaved_text(). A shared dialog uses the
 text of its first involved tracker.}
+
+\item{values}{NULL or a uniquely named list of reactive expressions or
+reactiveVals. Names are both ids and labels and must not clash with inputs.
+Their first results become the baseline. Data frames compare column by
+column. These values never enter browser snapshots.}
+
+\item{value_outputs}{NULL or a named character vector mapping value ids to
+output ids. The output container receives the marker. Use local ids in
+modules. Unmapped values count towards the badge but have no marker.}
+
+\item{require_reason}{Require a reason before Save and leave. If TRUE,
+on_save must have exactly one argument named reason. Otherwise it takes
+no arguments. Reasons are trimmed and cut to 1000 characters.}
 
 \item{session}{The current Shiny session.}
 }
@@ -90,15 +108,15 @@ Query methods read the real differences even while paused.
 \itemize{
 \item \code{is_dirty()}: Reactive scalar logical: TRUE if values differ.
 \item \code{count()}: Reactive scalar integer: number of changed fields.
-\item \code{changed()}: Reactive character vector of changed local input ids.
-\item \code{diff()}: Reactive data frame in input order, with name, label,
+\item \code{changed()}: Reactive character vector of changed local input and value ids.
+\item \code{diff()}: Reactive data frame in input then value order, with name, label,
 change, saved and current columns. The last two are list columns.
 A clean tracker returns the same five columns with zero rows.
 \item \code{is_paused()}: Reactive scalar logical: TRUE while paused.
 \item \code{baseline()}: Non-reactive named list of saved values.
-\item \code{mark_saved(values = NULL)}: Non-reactive command. Uses current inputs
+\item \code{mark_saved(values = NULL)}: Non-reactive command. Uses current inputs and values
 as the baseline, or overlays a named list of saved values keyed by
-tracked input id. Omitted ids use current values. Unknown ids are
+tracked input or value id. Omitted ids use current values. Unknown ids are
 errors; passwords are ignored. File values stay on the server.
 Publishes a clean browser state immediately. Returns invisible self.
 \item \code{discard()}: Non-reactive command. Requests that the browser
@@ -116,6 +134,11 @@ Otherwise asks first, then runs it after discard or successful save.
 Keep editing cancels the action, but not a save already requested.
 A second pending call warns and drops the new action.
 Returns invisible self, not the action result.
+\item \code{ask_reason(action)}: Non-reactive command. Always opens a reason-only
+dialog with Cancel and Save. Save calls action(reason) once; Cancel does
+nothing. The action must take one argument and must save and mark_saved()
+itself. Shares the pending confirmation slot with confirm(). Returns
+invisible self. Available whether or not require_reason is TRUE.
 \item \code{destroy()}: Stops tracking, cancels a pending confirmation and removes
 client markers, badge counts and guards. Repeated calls do nothing.
 Runs automatically on session end and on module destruction when
@@ -166,6 +189,22 @@ inputs or undo writes to storage. In on_discard, read the saved snapshot:
   # Use this snapshot, not the not-yet-restored input values.
 \}
 }\if{html}{\out{</div>}}
+
+Server values cannot be restored by the package. Restoring each reactiveVal
+from tracker$baseline() in on_discard is the app's job. mark_saved() snapshots
+server values too; mark_saved(values = list(Visits = saved_table)) overlays
+their saved values by id. diff() lists input changes then server value changes.
+}
+
+\section{Reason for change and audit trails}{
+
+With require_reason = TRUE, Save and leave requires non-blank text labelled
+by unsaved_text(reason = "Reason for change"). ask_reason() uses reason_title
+for its heading. Both trim the reason, limit it to 1000 characters and show
+a counter. The reason goes only to the server; the package never logs it.
+Record tracker$diff(), reason, the authenticated user and a timestamp in your
+on_save callback before returning TRUE. The package does not store the audit
+trail; the app does. Use a transaction for the record and audit writes.
 }
 
 \section{Save errors}{

@@ -1,7 +1,7 @@
 test_that("the tracker signature keeps session last", {
   expect_named(formals(unsaved_track), c(
     "inputs", "guard_nav", "guard_unload", "guard_clicks", "on_save", "on_discard",
-    "compare", "text", "session"
+    "compare", "text", "values", "value_outputs", "require_reason", "session"
   ))
 })
 
@@ -329,7 +329,7 @@ test_that("flag and session errors identify the argument and bad value", {
   expect_error(unsaved_track("name", session = list()), "`session` must be a Shiny session", fixed = TRUE)
   expect_error(unsaved_track("name", session = new.env()), "`session` must be a Shiny session", fixed = TRUE)
   expect_error(unsaved_track(character()),
-               "`inputs` must contain at least one non-empty input id.", fixed = TRUE)
+               "`inputs` must contain at least one non-empty input id, or supply `values`.", fixed = TRUE)
   expect_error(unsaved_track("name", session = session, compare = list(nmae = identical)),
                "`compare` has unknown input id `nmae`. Tracked ids: name.", fixed = TRUE)
 })

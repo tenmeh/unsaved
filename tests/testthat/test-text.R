@@ -5,7 +5,8 @@ test_that("text retain defaults and validate every field", {
     title = "Unsaved changes", message = "You have {n} unsaved change{s}.",
     keep = "Keep editing", discard = "Discard changes", save = "Save and leave",
     saving = "Saving...", save_failed = "Could not save. Your changes are still here.",
-    unsaved = "(unsaved)"
+    unsaved = "(unsaved)", reason = "Reason for change",
+    reason_title = "Why are you making this change?"
   ))
   for (id in names(text)) {
     for (bad in list(NULL, character(), NA_character_, c("a", "b"), 1)) {

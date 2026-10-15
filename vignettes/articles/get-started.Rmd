@@ -65,7 +65,8 @@ start joins the baseline automatically.
 ## Save and leave
 
 An `on_save` function adds **Save and leave** to the navigation dialog.
-It takes no arguments. The tracker marks values saved after it returns
+It takes no arguments unless `require_reason = TRUE`. The tracker marks
+values saved after it returns
 exactly `TRUE` or its promise resolves to exactly `TRUE`, then opens the
 requested tab. Returning `FALSE` or raising an error keeps the edits and
 shows a safe failure message.
@@ -130,6 +131,109 @@ try Save and leave: the dialog stays open and shows the generic message
 "Could not save. Your changes are still here." Choose Keep editing, enter a
 valid name and try again. Only a successful save changes the saved baseline.
 Storage errors are logged on the server; their details do not reach the browser.
+
+## Track an edited table on the server
+
+DT and rhandsontable send edit events, not a complete saved table. Keep the
+edited table in a reactiveVal and give that reactive to `values`. This DT
+example belongs inside the app's server function; the UI needs
+`DT::DTOutput("visits_table")` and Save and Discard action buttons.
+
+```r
+table_rv <- reactiveVal(data.frame(visit = 1:3, score = c(2, 4, 6)))
+tracker <- unsaved_track(
+  inputs = character(),
+  values = list(Visits = table_rv),
+  value_outputs = c(Visits = "visits_table"),
+  on_discard = function() table_rv(tracker$baseline()$Visits)
+)
+output$visits_table <- DT::renderDT({
+  DT::datatable(table_rv(), editable = TRUE, rownames = FALSE,
+                selection = "none")
+}, server = TRUE)
+observeEvent(input$visits_table_cell_edit, {
+  table_rv(DT::editData(table_rv(), input$visits_table_cell_edit,
+                       rownames = FALSE))
+})
+observeEvent(input$save, {
+  save_visits(table_rv())  # your app's storage function
+  tracker$mark_saved()
+})
+observeEvent(input$discard, tracker$discard())
+```
+
+The list names are the value ids and labels. They must be unique and must
+not clash with input ids. Supply at least one input or value. A reactive
+expression also works: its first available result becomes the baseline.
+Data frames compare column by column, using the usual comparison rules;
+`compare = list(Visits = identical)` selects an exact comparison.
+
+Changed values appear in `is_dirty()`, `count()`, `changed()` and `diff()`,
+and count towards the badge. For example, a change summary can read
+"a table of 12 rows -> a table of 13 rows". Input changes appear first in
+`diff()`, followed by server values in list order. `value_outputs` is optional:
+without it, the value has no field marker. Use module-local output ids.
+
+`mark_saved()` snapshots server values too. To supply saved data explicitly,
+use `tracker$mark_saved(values = list(Visits = saved_table))`. The package
+never sends these values to the browser, even on discard. The table widget
+still renders the data that your app gives it. Restoring the reactiveVal is
+the app's job: `discard()` calls `on_discard`, which reads `tracker$baseline()`
+in the example. Without that callback, the edited server value stays dirty.
+
+## Reason for change and audit trails
+
+Set `require_reason = TRUE` to require a reason for Save and leave.
+`on_save` must then take exactly one argument named `reason`. With the default
+`require_reason = FALSE`, it must take no arguments.
+
+The following server example appends changes to an in-memory audit table.
+Replace this store with your app's persistent audit table, and write the
+record and audit entry in one transaction. `authenticated_user()` must return
+the user id from your app's authentication system.
+
+```r
+audit <- reactiveVal(data.frame())
+save_with_reason <- function(reason) {
+  changes <- tracker$diff()
+  changes$reason <- rep(reason, nrow(changes))
+  changes$user <- rep(authenticated_user(), nrow(changes))
+  changes$timestamp <- rep(Sys.time(), nrow(changes))
+  save_record(input$name)  # your app's storage function
+  audit(rbind(audit(), changes))
+  TRUE
+}
+tracker <- unsaved_track("name", require_reason = TRUE,
+  on_save = function(reason) save_with_reason(reason))
+observeEvent(input$save, {
+  tracker$ask_reason(function(reason) {
+    if (isTRUE(save_with_reason(reason))) tracker$mark_saved()
+  })
+})
+```
+
+The package does not store the audit trail; the app does. Capture `diff()`
+before marking the values saved. This feature supplies a reason to your
+app's audit code; it does not implement a regulatory compliance system.
+
+The dialog has a required text area labelled "Reason for change". Save stays
+disabled until the trimmed reason is non-empty. Reasons are trimmed and cut
+to at most 1000 characters, with a visible counter. They go only to the
+server and are never logged by the package. Callback errors use generic
+package warnings when a reason is involved; handle diagnostics in your app
+without exposing the reason.
+
+`tracker$ask_reason(action)` always asks, even when clean or paused, and also
+works with `require_reason = FALSE`. Its dialog has Cancel and Save buttons.
+Cancel does nothing; Save calls `action(reason)` once. The action saves and
+calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
+pending per tracker; a second request warns and is dropped.
+
+Customise the label and the reason-only heading with
+`unsaved_text(reason = "Reason for change",`
+`reason_title = "Why are you making this change?")`. A shared Save and leave
+dialog requires a reason if any involved tracker requires one; that reason
+is passed to each callback that requires it.
 
 ## The navigation guard
 

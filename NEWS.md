@@ -18,3 +18,7 @@
   stay unsaved. Failed promises, errors and invalid results warn.
 * `tracker$mark_saved(values =)` accepts a saved record before input updates.
 * Browser edits provisionally arm the close-tab warning while the server is busy.
+* `unsaved_track(values =)` tracks server reactive values, with optional output
+  markers through `value_outputs` and app-managed restoration on discard.
+* `unsaved_track(require_reason = TRUE)` requires a reason for Save and leave;
+  `tracker$ask_reason()` requests one for the app's own Save action.

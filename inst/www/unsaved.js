@@ -56,8 +56,19 @@
     }
   }
 
+  function markerIds(current) {
+    return current.ids.map(function (id) {
+      if ((current.valueIds || []).indexOf(id) === -1) return id;
+      return (current.valueOutputs || {})[id];
+    }).filter(Boolean);
+  }
+
   function reconcile() {
-    var ids = dirtyIds();
+    var changed = dirtyIds();
+    var ids = new Set();
+    Object.keys(states).forEach(function (id) {
+      markerIds(states[id]).forEach(function (x) { ids.add(x); });
+    });
     marks.forEach(function (record, id) {
       if (!ids.has(id) || document.getElementById(id) !== record.el) {
         unmark(record);
@@ -67,7 +78,11 @@
     ids.forEach(function (id) {
       var el = document.getElementById(id);
       if (!el) return;
-      var container = el.closest(".shiny-input-container") || el.closest(".form-group") || el.parentElement;
+      var output = Object.keys(states).some(function (key) {
+        return Object.values(states[key].valueOutputs || {}).indexOf(id) !== -1;
+      });
+      var container = output ? el :
+        el.closest(".shiny-input-container") || el.closest(".form-group") || el.parentElement;
       if (!container) return;
       var label = container.querySelector(":scope > label") ||
         container.querySelector(":scope > label.control-label") || container.querySelector("label") || container;
@@ -82,7 +97,7 @@
         var text = document.createElement("span");
         text.className = "unsaved-sr";
         text.id = "unsaved-description-" + (++serial);
-        var owner = Object.keys(states).find(function (key) { return states[key].ids.indexOf(id) !== -1; });
+        var owner = Object.keys(states).find(function (key) { return markerIds(states[key]).indexOf(id) !== -1; });
         text.textContent = states[owner].text.unsaved;
         container.appendChild(text);
         el.setAttribute("aria-describedby", ((el.getAttribute("aria-describedby") || "") + " " + text.id).trim());
@@ -90,8 +105,8 @@
       }
     });
     document.querySelectorAll(".unsaved-badge").forEach(function (badge) {
-      badge.textContent = ids.size ? (badge.getAttribute("data-unsaved-label") || "{n} unsaved change{s}")
-        .replace(/\{n\}/g, ids.size).replace(/\{s\}/g, ids.size === 1 ? "" : "s") : "";
+      badge.textContent = changed.size ? (badge.getAttribute("data-unsaved-label") || "{n} unsaved change{s}")
+        .replace(/\{n\}/g, changed.size).replace(/\{s\}/g, changed.size === 1 ? "" : "s") : "";
     });
     var active = Object.keys(states).some(function (id) {
       return states[id].guardUnload && (states[id].ids.length || states[id].provisional);
@@ -148,11 +163,11 @@
     });
   }
 
-  function confirmReply(choice) {
+  function confirmReply(choice, reason) {
     if (!dialog || !dialog.confirmation) return;
     var request = dialog.confirmation;
     window.Shiny.setInputValue(states[request.instance].confirmInput, {
-      instance: request.instance, token: request.token, choice: choice, at: Date.now()
+      instance: request.instance, token: request.token, choice: choice, reason: reason, at: Date.now()
     }, {priority: "event"});
   }
 
@@ -184,7 +199,8 @@
     if (!message.ok) {
       dialog.waiting = false;
       dialog.discard.disabled = false;
-      dialog.save.disabled = false;
+      dialog.save.disabled = dialog.reason && !dialog.reason.value.trim();
+      if (dialog.reason) dialog.reason.disabled = false;
       dialog.save.textContent = dialog.text.save;
       dialog.alert.textContent = dialog.text.save_failed;
       return;
@@ -204,6 +220,8 @@
     }
     var previousFocus = document.activeElement;
     var text = states[instances[0]].text;
+    var reasonOnly = confirmation && confirmation.reasonOnly;
+    var needsReason = reasonOnly || instances.some(function (id) { return states[id].requireReason; });
     var backdrop = document.createElement("div");
     backdrop.className = "unsaved-backdrop";
     var panel = document.createElement("div");
@@ -212,7 +230,7 @@
     panel.setAttribute("aria-modal", "true");
     var title = document.createElement("h2");
     title.id = "unsaved-dialog-title-" + (++serial);
-    title.textContent = text.title;
+    title.textContent = reasonOnly ? text.reason_title : text.title;
     panel.setAttribute("aria-labelledby", title.id);
     var count = new Set();
     instances.forEach(function (id) {
@@ -228,7 +246,7 @@
     discard.type = "button";
     keep.className = "btn btn-secondary";
     discard.className = "btn btn-danger";
-    keep.textContent = text.keep;
+    keep.textContent = reasonOnly ? "Cancel" : text.keep;
     discard.textContent = text.discard;
     keep.addEventListener("click", closeDialog);
     discard.addEventListener("click", function () {
@@ -246,20 +264,55 @@
     // The buttons sit in one row that wraps as a whole on narrow screens.
     var actions = document.createElement("div");
     actions.className = "unsaved-dialog-actions";
-    actions.append(keep, discard);
-    panel.append(title, message, actions);
-    var buttons = [keep, discard];
+    actions.appendChild(keep);
+    if (!reasonOnly) actions.appendChild(discard);
+    panel.appendChild(title);
+    if (!reasonOnly) panel.appendChild(message);
+    var reason = null;
+    var counter = null;
+    if (needsReason) {
+      var label = document.createElement("label");
+      reason = document.createElement("textarea");
+      reason.id = "unsaved-reason-" + (++serial);
+      reason.required = true;
+      reason.className = "form-control";
+      label.htmlFor = reason.id;
+      label.textContent = text.reason;
+      counter = document.createElement("p");
+      counter.className = "unsaved-reason-count";
+      counter.id = reason.id + "-count";
+      counter.textContent = "0 / 1000";
+      reason.setAttribute("aria-describedby", counter.id);
+      reason.addEventListener("input", function () {
+        reason.value = Array.from(reason.value).slice(0, 1000).join("");
+        counter.textContent = Array.from(reason.value).length + " / 1000";
+        if (save) save.disabled = !reason.value.trim();
+      });
+      panel.append(label, reason, counter);
+    }
+    panel.appendChild(actions);
+    var buttons = reasonOnly ? [keep] : [keep, discard];
+    if (reason) buttons.unshift(reason);
     var save = null;
     var alert = document.createElement("div");
     alert.setAttribute("role", "alert");
-    if (instances.every(function (id) { return states[id].canSave; })) {
+    if (reasonOnly || instances.every(function (id) { return states[id].canSave; })) {
       save = document.createElement("button");
       save.type = "button";
       save.className = "btn btn-primary";
-      save.textContent = text.save;
+      save.textContent = reasonOnly ? "Save" : text.save;
+      save.disabled = !!needsReason;
       save.addEventListener("click", function () {
         if (!dialog || dialog.waiting) return;
+        var reasonText = reason ? Array.from(reason.value.trim()).slice(0, 1000).join("") : undefined;
+        if (needsReason && !reasonText) return;
+        if (reasonOnly) {
+          confirmReply("save", reasonText);
+          closeDialog(false);
+          return;
+        }
         dialog.waiting = true;
+        if (reason) reason.disabled = true;
         discard.disabled = true;
         save.disabled = true;
         save.textContent = text.saving;
@@ -272,6 +325,7 @@
           saveRequests[id].push(attempt);
           window.Shiny.setInputValue(states[id].saveInput || "unsaved_save_requested", {
             instance: id,
+            reason: states[id].requireReason ? reasonText : undefined,
             target: target ? target.id || target.getAttribute("data-value") || target.getAttribute("href") : null,
             at: Date.now()
           }, {priority: "event"});
@@ -299,6 +353,7 @@
     dialog = {
       text: text, backdrop: backdrop, target: target, discard: discard,
       save: save, alert: alert, waiting: false, confirmation: confirmation,
+      reason: reason,
       previousFocus: previousFocus, instances: instances
     };
     keep.focus();
@@ -365,6 +420,9 @@
       current.guardClicks = message.guardClicks;
       current.guardUnload = message.guardUnload;
       current.canSave = message.canSave;
+      current.requireReason = message.requireReason;
+      current.valueIds = message.valueIds || [];
+      current.valueOutputs = message.valueOutputs || {};
       current.saveInput = message.saveInput;
       current.discardInput = message.discardInput;
       current.navInput = message.navInput;
@@ -404,6 +462,10 @@
       Object.keys(states).forEach(function (id) {
         if (states[id].passwordInput) reportPasswords(states[id].passwordInput);
       });
+    });
+    window.jQuery(document).on("shiny:value", function () {
+      // Output rendering replaces children, including the screen-reader marker.
+      window.setTimeout(reconcile, 0);
     });
     window.jQuery(document).on("shiny:disconnected", function () {
       states = Object.create(null);
