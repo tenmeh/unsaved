@@ -76,6 +76,30 @@ format_change <- function(saved, current) {
   if (is.null(saved) && is.null(current)) return("no change")
   if (is.null(saved)) return(paste("set to", format_value(current)))
   if (is.null(current)) return("cleared")
+  if (is.data.frame(saved) && is.data.frame(current) &&
+        identical(names(saved), names(current)) && nrow(saved) == nrow(current)) {
+    cells <- character()
+    count <- 0L
+    # Skip identical columns first, so a large table costs little per diff().
+    changed_columns <- which(!vapply(seq_along(saved), function(column) {
+      identical(saved[[column]], current[[column]])
+    }, logical(1)))
+    for (row in seq_len(nrow(saved))) {
+      for (column in changed_columns) {
+        before <- saved[[column]][[row]]
+        after <- current[[column]][[row]]
+        if (values_equal(before, after)) next
+        count <- count + 1L
+        if (count <= 3L) {
+          cells <- c(cells, sprintf("row %d, %s: %s -> %s", row, names(saved)[column],
+                                    format_value(before), format_value(after)))
+        }
+      }
+    }
+    if (!count) return("no change")
+    if (count > 3L) cells <- c(cells, sprintf("and %d more cells", count - 3L))
+    return(paste(cells, collapse = "; "))
+  }
   paste(format_value(saved), "->", format_value(current))
 }
 

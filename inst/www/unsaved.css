@@ -10,7 +10,15 @@
   background: currentColor;
   vertical-align: middle;
 }
-.unsaved-sr {
+/* A changed output, such as an edited table, is outlined instead of dotted. */
+.shiny-bound-output[data-unsaved="true"],
+.html-widget-output[data-unsaved="true"] {
+  outline: 2px solid currentColor;
+  outline-offset: .25rem;
+  border-radius: .25rem;
+}
+.unsaved-sr,
+.unsaved-output-marker {
   position: absolute;
   width: 1px;
   height: 1px;

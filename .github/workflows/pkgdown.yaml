@@ -59,15 +59,15 @@ jobs:
         with:
           # shinylive builds the live demo. bslib is used
           # by the demo, and is in Suggests.
-          extra-packages: any::pkgdown, any::shinylive, any::bslib, local::.
+          extra-packages: any::pkgdown, any::shinylive, any::bslib, any::DT, local::.
           needs: website
 
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
         shell: Rscript {0}
 
-      # The live demo: the demo app, exported with shinylive into docs/demo.
-      # articles/live-demo.html shows it in an iframe. See the script for
+      # Both apps are exported with shinylive into docs/demo and docs/review.
+      # articles/live-demo.html shows both in iframes. See the script for
       # how unsaved gets into webR.
       - name: Build live demo
         run: Rscript pkgdown/live-demo.R docs
