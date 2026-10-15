@@ -5,7 +5,7 @@
 \title{Track Unsaved Input Changes}
 \usage{
 unsaved_track(
-  inputs,
+  inputs = character(),
   guard_nav = TRUE,
   guard_unload = TRUE,
   guard_clicks = TRUE,
@@ -13,11 +13,15 @@ unsaved_track(
   on_discard = NULL,
   compare = NULL,
   text = unsaved_text(),
+  values = NULL,
+  value_outputs = NULL,
+  require_reason = FALSE,
   session = shiny::getDefaultReactiveDomain()
 )
 }
 \arguments{
-\item{inputs}{Required non-empty character vector of unique input ids.
+\item{inputs}{Character vector of unique input ids. May be empty when
+values are supplied. At least one input or value must be supplied.
 Optional names are field labels; an empty name uses the id.}
 
 \item{guard_nav}{Guard tab clicks, keyboard and programmatic tab navigation,
@@ -30,10 +34,12 @@ wording and may suppress the prompt without prior user interaction.}
 \item{guard_clicks}{Guard clicks on elements marked with unsaved_guard().
 Tagged tabs follow guard_nav instead.}
 
-\item{on_save}{NULL or a function with no arguments. It must finish saving
-before it returns and return TRUE for success or FALSE for expected failure.
-Errors also fail the save. Any other result keeps changes unsaved and
-raises a server warning, including NULL, NA, promises and ExtendedTask.}
+\item{on_save}{NULL or a function with no arguments (or one argument named
+reason when require_reason is TRUE). It must finish saving
+before returning TRUE, or return a promise that resolves to exactly TRUE.
+FALSE, errors and other results fail the save. Failed promises raise one
+server warning. ExtendedTask results are unsupported; return the promise.
+Edits made while a promise is pending stay unsaved.}
 
 \item{on_discard}{NULL or a function with no arguments, called after each
 discard request. Errors become warnings. Inputs may not yet be restored; use
@@ -47,6 +53,19 @@ zero). For exact amounts or ids, use \code{compare = list(amount = identical)}.}
 
 \item{text}{Text returned by unsaved_text(). A shared dialog uses the
 text of its first involved tracker.}
+
+\item{values}{NULL or a uniquely named list of reactive expressions or
+reactiveVals. Names are both ids and labels and must not clash with inputs.
+Their first results become the baseline. Data frames compare column by
+column. These values never enter browser snapshots.}
+
+\item{value_outputs}{NULL or a named character vector mapping value ids to
+output ids. The output container receives the marker. Use local ids in
+modules. Unmapped values count towards the badge but have no marker.}
+
+\item{require_reason}{Require a reason before Save and leave. If TRUE,
+on_save must have exactly one argument named reason. Otherwise it takes
+no arguments. Reasons are trimmed and cut to 1000 characters.}
 
 \item{session}{The current Shiny session.}
 }
@@ -79,8 +98,9 @@ Use \code{tracker$confirm()} for server actions.
 
 With several trackers, a shared Save and leave saves each one on its own.
 One can succeed while another fails; nothing is rolled back. Use one
-tracker and one save for fields that must save together. Starting work
-in the background and returning before it finishes is not supported.
+tracker and one save for fields that must save together. Return a promise
+for background work. Only one save per tracker can be pending; further
+requests are ignored with a warning.
 }
 \section{Methods}{
 
@@ -88,14 +108,17 @@ Query methods read the real differences even while paused.
 \itemize{
 \item \code{is_dirty()}: Reactive scalar logical: TRUE if values differ.
 \item \code{count()}: Reactive scalar integer: number of changed fields.
-\item \code{changed()}: Reactive character vector of changed local input ids.
-\item \code{diff()}: Reactive data frame in input order, with name, label,
+\item \code{changed()}: Reactive character vector of changed local input and value ids.
+\item \code{diff()}: Reactive data frame in input then value order, with name, label,
 change, saved and current columns. The last two are list columns.
 A clean tracker returns the same five columns with zero rows.
 \item \code{is_paused()}: Reactive scalar logical: TRUE while paused.
 \item \code{baseline()}: Non-reactive named list of saved values.
-\item \code{mark_saved()}: Non-reactive command. Replaces the baseline
-with current values after the app saves. Returns invisible self.
+\item \code{mark_saved(values = NULL)}: Non-reactive command. Uses current inputs and values
+as the baseline, or overlays a named list of saved values keyed by
+tracked input or value id. Omitted ids use current values. Unknown ids are
+errors; passwords are ignored. File values stay on the server.
+Publishes a clean browser state immediately. Returns invisible self.
 \item \code{discard()}: Non-reactive command. Requests that the browser
 restore saved values, then calls on_discard without waiting for the
 inputs to return. Returns invisible self.
@@ -111,6 +134,11 @@ Otherwise asks first, then runs it after discard or successful save.
 Keep editing cancels the action, but not a save already requested.
 A second pending call warns and drops the new action.
 Returns invisible self, not the action result.
+\item \code{ask_reason(action)}: Non-reactive command. Always opens a reason-only
+dialog with Cancel and Save. Save calls action(reason) once; Cancel does
+nothing. The action must take one argument and must save and mark_saved()
+itself. Shares the pending confirmation slot with confirm(). Returns
+invisible self. Available whether or not require_reason is TRUE.
 \item \code{destroy()}: Stops tracking, cancels a pending confirmation and removes
 client markers, badge counts and guards. Repeated calls do nothing.
 Runs automatically on session end and on module destruction when
@@ -120,31 +148,35 @@ supported by Shiny. Returns invisible self.
 
 \section{Loading a record}{
 
-Pause guards and markers, update inputs, wait for their values from the
-browser, call mark_saved(), then resume(). Calling mark_saved() immediately
-after updateTextInput() captures old server values. For a tracker listing
-\code{name}, with \code{record} holding the new saved name, the server pattern is:
+Set the saved baseline before sending input updates. Here \code{records()} holds
+saved records with the tracked fields \code{name} and \code{location}:
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{pending_record <- shiny::reactiveVal(NULL)
-load_record <- function(record) \{
-  tracker$pause()
-  pending_record(record)
-  shiny::updateTextInput(session, "name", value = record$name)
-\}
-shiny::observe(\{
-  record <- pending_record()
-  shiny::req(!is.null(record))
-  if (identical(input$name, record$name)) \{
-    tracker$mark_saved()
-    tracker$resume()
-    pending_record(NULL)
-  \}
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{observeEvent(input$load, \{
+  record_id <- input$record
+  tracker$confirm(function() \{
+    record <- records()[[record_id]]
+    tracker$mark_saved(values = record)
+    updateTextInput(session, "name", value = record$name)
+    updateTextInput(session, "location", value = record$location)
+  \})
 \})
 }\if{html}{\out{</div>}}
 
-Use confirm() before loading over edits. Disable editing, saving and further
-loads while waiting. Check every updated field, using its binding's type.
-A field appearing later takes its first value as saved.
+\code{values} is a named list keyed by tracked input id. Omitted ids use their
+current input values. Unknown ids are errors; password ids are ignored.
+File values can be saved on the server but are never sent to the browser.
+With no argument, \code{mark_saved()} still captures current input values.
+
+The browser receives a clean state immediately. Until the updated values
+return, server comparisons can briefly report the old inputs as dirty.
+The next server comparison decides the state; matching echoes leave it clean.
+Supply values with the types returned by each input binding. Use \code{confirm()}
+before replacing edits, as above.
+
+The pause, update, wait for every echo, \code{mark_saved()}, resume pattern is still
+useful when the final values are not known in advance, or updates span several
+round trips. Disable editing and saving while that load is pending. Paused
+queries still report real differences; \code{is_paused()} can show a loading state.
 }
 
 \section{Discard requests}{
@@ -157,6 +189,22 @@ inputs or undo writes to storage. In on_discard, read the saved snapshot:
   # Use this snapshot, not the not-yet-restored input values.
 \}
 }\if{html}{\out{</div>}}
+
+Server values cannot be restored by the package. Restoring each reactiveVal
+from tracker$baseline() in on_discard is the app's job. mark_saved() snapshots
+server values too; mark_saved(values = list(Visits = saved_table)) overlays
+their saved values by id. diff() lists input changes then server value changes.
+}
+
+\section{Reason for change and audit trails}{
+
+With require_reason = TRUE, Save and leave requires non-blank text labelled
+by unsaved_text(reason = "Reason for change"). ask_reason() uses reason_title
+for its heading. Both trim the reason, limit it to 1000 characters and show
+a counter. The reason goes only to the server; the package never logs it.
+Record tracker$diff(), reason, the authenticated user and a timestamp in your
+on_save callback before returning TRUE. The package does not store the audit
+trail; the app does. Use a transaction for the record and audit writes.
 }
 
 \section{Save errors}{
@@ -181,9 +229,13 @@ problem, select Save and leave again to retry.
 
 \section{Limits}{
 
-Dirty state needs a round trip to the server. An edit made while the server
-is busy is protected only once the server has seen it and sent the new state
-back to the browser. Browser close warnings may be suppressed.
+For cached, restorable inputs, the close-tab warning is armed as soon as the
+browser reports a changed value, even while the server is busy. Paused trackers
+and \code{guard_unload = FALSE} are excluded. Markers, badges, tab and click guards
+still follow the server. The browser uses JSON equality; the next server state
+wins, including custom comparisons. Password and file inputs have no
+provisional protection.
+Browser close warnings may be suppressed.
 
 discard() restores saved values through supported Shiny bindings. It is
 tested with text, text area and numeric inputs; radio buttons, checkboxes

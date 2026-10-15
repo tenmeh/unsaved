@@ -12,7 +12,9 @@ unsaved_text(
   save = "Save and leave",
   saving = "Saving...",
   save_failed = "Could not save. Your changes are still here.",
-  unsaved = "(unsaved)"
+  unsaved = "(unsaved)",
+  reason = "Reason for change",
+  reason_title = "Why are you making this change?"
 )
 }
 \arguments{
@@ -31,6 +33,10 @@ unsaved_text(
 \item{save_failed}{Alert after a failed save.}
 
 \item{unsaved}{Screen-reader text for changed fields.}
+
+\item{reason}{Label for the required reason text area.}
+
+\item{reason_title}{Heading for the reason-only dialog.}
 }
 \value{
 A classed list for unsaved_track().

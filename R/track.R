@@ -1,8 +1,19 @@
 #' Track Unsaved Input Changes
 #' @description Help users of Shiny forms see edits they have not saved and
 #'   ask before they lose them. The app validates and saves its own data.
-#' @param inputs Required non-empty character vector of unique input ids.
+#' @param inputs Character vector of unique input ids. May be empty when
+#'   values are supplied. At least one input or value must be supplied.
 #'   Optional names are field labels; an empty name uses the id.
+#' @param values NULL or a uniquely named list of reactive expressions or
+#'   reactiveVals. Names are both ids and labels and must not clash with inputs.
+#'   Their first results become the baseline. Data frames compare column by
+#'   column. These values never enter browser snapshots.
+#' @param value_outputs NULL or a named character vector mapping value ids to
+#'   output ids. The output container receives the marker. Use local ids in
+#'   modules. Unmapped values count towards the badge but have no marker.
+#' @param require_reason Require a reason before Save and leave. If TRUE,
+#'   on_save must have exactly one argument named reason. Otherwise it takes
+#'   no arguments. Reasons are trimmed and cut to 1000 characters.
 #' @param guard_nav Guard tab clicks, keyboard and programmatic tab navigation,
 #'   including updateTabsetPanel(). To navigate while dirty, call mark_saved(),
 #'   discard() (and wait for restored inputs), or pause() first.
@@ -10,10 +21,12 @@
 #'   wording and may suppress the prompt without prior user interaction.
 #' @param guard_clicks Guard clicks on elements marked with unsaved_guard().
 #'   Tagged tabs follow guard_nav instead.
-#' @param on_save NULL or a function with no arguments. It must finish saving
-#'   before it returns and return TRUE for success or FALSE for expected failure.
-#'   Errors also fail the save. Any other result keeps changes unsaved and
-#'   raises a server warning, including NULL, NA, promises and ExtendedTask.
+#' @param on_save NULL or a function with no arguments (or one argument named
+#'   reason when require_reason is TRUE). It must finish saving
+#'   before returning TRUE, or return a promise that resolves to exactly TRUE.
+#'   FALSE, errors and other results fail the save. Failed promises raise one
+#'   server warning. ExtendedTask results are unsupported; return the promise.
+#'   Edits made while a promise is pending stay unsaved.
 #' @param on_discard NULL or a function with no arguments, called after each
 #'   discard request. Errors become warnings. Inputs may not yet be restored; use
 #'   baseline() for the restored values.
@@ -31,14 +44,17 @@
 #'
 #' - `is_dirty()`: Reactive scalar logical: TRUE if values differ.
 #' - `count()`: Reactive scalar integer: number of changed fields.
-#' - `changed()`: Reactive character vector of changed local input ids.
-#' - `diff()`: Reactive data frame in input order, with name, label,
+#' - `changed()`: Reactive character vector of changed local input and value ids.
+#' - `diff()`: Reactive data frame in input then value order, with name, label,
 #'     change, saved and current columns. The last two are list columns.
 #'     A clean tracker returns the same five columns with zero rows.
 #' - `is_paused()`: Reactive scalar logical: TRUE while paused.
 #' - `baseline()`: Non-reactive named list of saved values.
-#' - `mark_saved()`: Non-reactive command. Replaces the baseline
-#'     with current values after the app saves. Returns invisible self.
+#' - `mark_saved(values = NULL)`: Non-reactive command. Uses current inputs and values
+#'     as the baseline, or overlays a named list of saved values keyed by
+#'     tracked input or value id. Omitted ids use current values. Unknown ids are
+#'     errors; passwords are ignored. File values stay on the server.
+#'     Publishes a clean browser state immediately. Returns invisible self.
 #' - `discard()`: Non-reactive command. Requests that the browser
 #'     restore saved values, then calls on_discard without waiting for the
 #'     inputs to return. Returns invisible self.
@@ -54,6 +70,11 @@
 #'     Keep editing cancels the action, but not a save already requested.
 #'     A second pending call warns and drops the new action.
 #'     Returns invisible self, not the action result.
+#' - `ask_reason(action)`: Non-reactive command. Always opens a reason-only
+#'     dialog with Cancel and Save. Save calls action(reason) once; Cancel does
+#'     nothing. The action must take one argument and must save and mark_saved()
+#'     itself. Shares the pending confirmation slot with confirm(). Returns
+#'     invisible self. Available whether or not require_reason is TRUE.
 #' - `destroy()`: Stops tracking, cancels a pending confirmation and removes
 #'     client markers, badge counts and guards. Repeated calls do nothing.
 #'     Runs automatically on session end and on module destruction when
@@ -80,34 +101,41 @@
 #'
 #'   With several trackers, a shared Save and leave saves each one on its own.
 #'   One can succeed while another fails; nothing is rolled back. Use one
-#'   tracker and one save for fields that must save together. Starting work
-#'   in the background and returning before it finishes is not supported.
+#'   tracker and one save for fields that must save together. Return a promise
+#'   for background work. Only one save per tracker can be pending; further
+#'   requests are ignored with a warning.
 #'
 #' @section Loading a record:
-#' Pause guards and markers, update inputs, wait for their values from the
-#' browser, call mark_saved(), then resume(). Calling mark_saved() immediately
-#' after updateTextInput() captures old server values. For a tracker listing
-#' `name`, with `record` holding the new saved name, the server pattern is:
+#' Set the saved baseline before sending input updates. Here `records()` holds
+#' saved records with the tracked fields `name` and `location`:
+#'
 #' ```r
-#' pending_record <- shiny::reactiveVal(NULL)
-#' load_record <- function(record) {
-#'   tracker$pause()
-#'   pending_record(record)
-#'   shiny::updateTextInput(session, "name", value = record$name)
-#' }
-#' shiny::observe({
-#'   record <- pending_record()
-#'   shiny::req(!is.null(record))
-#'   if (identical(input$name, record$name)) {
-#'     tracker$mark_saved()
-#'     tracker$resume()
-#'     pending_record(NULL)
-#'   }
+#' observeEvent(input$load, {
+#'   record_id <- input$record
+#'   tracker$confirm(function() {
+#'     record <- records()[[record_id]]
+#'     tracker$mark_saved(values = record)
+#'     updateTextInput(session, "name", value = record$name)
+#'     updateTextInput(session, "location", value = record$location)
+#'   })
 #' })
 #' ```
-#' Use confirm() before loading over edits. Disable editing, saving and further
-#' loads while waiting. Check every updated field, using its binding's type.
-#' A field appearing later takes its first value as saved.
+#'
+#' `values` is a named list keyed by tracked input id. Omitted ids use their
+#' current input values. Unknown ids are errors; password ids are ignored.
+#' File values can be saved on the server but are never sent to the browser.
+#' With no argument, `mark_saved()` still captures current input values.
+#'
+#' The browser receives a clean state immediately. Until the updated values
+#' return, server comparisons can briefly report the old inputs as dirty.
+#' The next server comparison decides the state; matching echoes leave it clean.
+#' Supply values with the types returned by each input binding. Use `confirm()`
+#' before replacing edits, as above.
+#'
+#' The pause, update, wait for every echo, `mark_saved()`, resume pattern is still
+#' useful when the final values are not known in advance, or updates span several
+#' round trips. Disable editing and saving while that load is pending. Paused
+#' queries still report real differences; `is_paused()` can show a loading state.
 #'
 #' @section Discard requests:
 #' discard() sends a request to the browser; it does not synchronously restore
@@ -118,6 +146,19 @@
 #'   # Use this snapshot, not the not-yet-restored input values.
 #' }
 #' ```
+#' Server values cannot be restored by the package. Restoring each reactiveVal
+#' from tracker$baseline() in on_discard is the app's job. mark_saved() snapshots
+#' server values too; mark_saved(values = list(Visits = saved_table)) overlays
+#' their saved values by id. diff() lists input changes then server value changes.
+#'
+#' @section Reason for change and audit trails:
+#' With require_reason = TRUE, Save and leave requires non-blank text labelled
+#' by unsaved_text(reason = "Reason for change"). ask_reason() uses reason_title
+#' for its heading. Both trim the reason, limit it to 1000 characters and show
+#' a counter. The reason goes only to the server; the package never logs it.
+#' Record tracker$diff(), reason, the authenticated user and a timestamp in your
+#' on_save callback before returning TRUE. The package does not store the audit
+#' trail; the app does. Use a transaction for the record and audit writes.
 #'
 #' @section Save errors:
 #' The app must log errors inside on_save(), then return FALSE. The browser
@@ -137,9 +178,13 @@
 #' problem, select Save and leave again to retry.
 #'
 #' @section Limits:
-#' Dirty state needs a round trip to the server. An edit made while the server
-#' is busy is protected only once the server has seen it and sent the new state
-#' back to the browser. Browser close warnings may be suppressed.
+#' For cached, restorable inputs, the close-tab warning is armed as soon as the
+#' browser reports a changed value, even while the server is busy. Paused trackers
+#' and `guard_unload = FALSE` are excluded. Markers, badges, tab and click guards
+#' still follow the server. The browser uses JSON equality; the next server state
+#' wins, including custom comparisons. Password and file inputs have no
+#' provisional protection.
+#' Browser close warnings may be suppressed.
 #'
 #' discard() restores saved values through supported Shiny bindings. It is
 #' tested with text, text area and numeric inputs; radio buttons, checkboxes
@@ -159,46 +204,62 @@
 #' }
 #' @export
 #' @importFrom R6 R6Class
-unsaved_track <- function(inputs, guard_nav = TRUE, guard_unload = TRUE,
+unsaved_track <- function(inputs = character(), guard_nav = TRUE, guard_unload = TRUE,
                           guard_clicks = TRUE, on_save = NULL, on_discard = NULL, compare = NULL,
-                          text = unsaved_text(),
+                          text = unsaved_text(), values = NULL,
+                          value_outputs = NULL, require_reason = FALSE,
                           session = shiny::getDefaultReactiveDomain()) {
-  valid_inputs <- !missing(inputs) && is.character(inputs) &&
-    length(inputs) > 0L && !anyNA(inputs) && all(nzchar(inputs))
+  valid_inputs <- is.character(inputs) && !anyNA(inputs) && all(nzchar(inputs))
   if (!valid_inputs) {
     stop("`inputs` must contain at least one non-empty input id.", call. = FALSE)
   }
-  session <- require_session(session)
   if (anyDuplicated(inputs)) stop("`inputs` must contain unique input ids.", call. = FALSE)
   if (anyNA(names(inputs))) stop("Field names must not be NA.", call. = FALSE)
+  validate_tracked_values(values, inputs, value_outputs)
+  if (!length(inputs) && !length(values)) {
+    stop("`inputs` must contain at least one non-empty input id, or supply `values`.", call. = FALSE)
+  }
+  session <- require_session(session)
   check_flag(guard_nav, "guard_nav")
   check_flag(guard_unload, "guard_unload")
   check_flag(guard_clicks, "guard_clicks")
-  check_callback(on_save, "on_save")
+  check_flag(require_reason, "require_reason")
+  if (require_reason) {
+    check_reason_callback(on_save, "on_save", allow_null = TRUE)
+  } else {
+    check_callback(on_save, "on_save")
+  }
   check_callback(on_discard, "on_discard")
   if (!inherits(text, "unsaved_text")) {
     stop("`text` must be returned by unsaved_text().", call. = FALSE)
   }
-  validate_compare(compare, inputs)
+  validate_compare(compare, c(inputs, names(values)))
   UnsavedTracker$new(
     inputs = inputs, guard_nav = guard_nav, guard_unload = guard_unload,
     guard_clicks = guard_clicks, on_save = on_save, on_discard = on_discard, compare = compare,
-    text = text, session = session
+    text = text, session = session, values = values,
+    value_outputs = value_outputs, require_reason = require_reason
   )
 }
 
 UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
   public = list(
     initialize = function(inputs, guard_nav, guard_unload, guard_clicks,
-                          on_save, on_discard, compare, text, session) {
+                          on_save, on_discard, compare, text, session,
+                          values, value_outputs, require_reason) {
       private$.text <- text
       private$.compare <- compare
       private$.on_discard <- on_discard
       private$.session <- session
       private$.inputs <- unname(inputs)
+      private$.values <- values
+      private$.ids <- c(unname(inputs), names(values))
+      private$.value_outputs <- value_outputs
+      private$.require_reason <- require_reason
       field_names <- names(inputs) %||% rep("", length(inputs))
       field_names[!nzchar(field_names)] <- inputs[!nzchar(field_names)]
       private$.field_names <- structure(field_names, names = unname(inputs))
+      private$.field_names <- c(private$.field_names, stats::setNames(names(values), names(values)))
       private$.guard_clicks <- guard_clicks
       private$.pause_state <- shiny::reactiveVal(FALSE)
       private$.guard_nav <- guard_nav
@@ -276,7 +337,7 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       ids <- private$.changed()
       current <- private$.current()
       input_diff(
-        self$baseline(), current, private$.inputs,
+        self$baseline(), current, private$.ids,
         private$.field_names, private$.compare, ids
       )
     },
@@ -297,13 +358,45 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       })
       invisible(self)
     },
+    ask_reason = function(action) {
+      check_reason_callback(action, "action")
+      if (private$.destroyed) return(invisible(self))
+      if (!is.null(private$.pending)) {
+        warning("A confirmation is already open, so this action was not run.", call. = FALSE)
+      } else {
+        token <- basename(tempfile("reason-"))
+        private$.pending <- list(token = token, action = action, reason_only = TRUE)
+        private$.session$sendCustomMessage("unsaved:confirm", list(
+          instance = private$.instance, token = token, reasonOnly = TRUE
+        ))
+      }
+      invisible(self)
+    },
     baseline = function() {
       shiny::isolate({
-        snapshot_inputs(private$.baseline, private$.inputs, private$excluded_ids())
+        private$select_values(private$.baseline)
       })
     },
-    mark_saved = function() {
-      private$.baseline <- shiny::isolate(private$.current())
+    mark_saved = function(values = NULL) {
+      if (!is.null(values)) {
+        ids <- names(values)
+        valid_names <- !length(values) || (!is.null(ids) && !anyNA(ids) &&
+                                             all(nzchar(ids)) && !anyDuplicated(ids))
+        if (!is.list(values) || is.data.frame(values) || !valid_names) {
+          stop("`values` must be NULL or a uniquely named list of saved values.", call. = FALSE)
+        }
+        unknown <- setdiff(ids, private$.ids)
+        if (length(unknown)) {
+          stop("Unknown input id in `values`: ", paste(unknown, collapse = ", "),
+               ". Tracked ids: ", paste(private$.ids, collapse = ", "), ".", call. = FALSE)
+        }
+      }
+      shiny::isolate({
+        baseline <- private$.current()
+        values <- private$select_values(values)
+        baseline[names(values)] <- values
+        private$.baseline <- baseline
+      })
       private$config()
       private$publish(character())
       invisible(self)
@@ -342,9 +435,14 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
     .text = NULL, .compare = NULL, .on_discard = NULL, .discard_observer = NULL,
     .field_names = NULL, .pending = NULL, .confirm_observer = NULL,
     .guard_clicks = TRUE, .pause_state = NULL,
-    .current = NULL, .destroyed = FALSE,
+    .current = NULL, .destroyed = FALSE, .saving = FALSE,
     .password_ready = FALSE,
     .password_ids = NULL,
+    .values = NULL, .ids = NULL, .value_outputs = NULL, .require_reason = FALSE,
+    select_values = function(values) {
+      c(snapshot_inputs(values, private$.inputs, private$excluded_ids()),
+        values[intersect(names(values), names(private$.values))])
+    },
     notify_discard = function() {
       if (!is.null(private$.on_discard)) {
         tryCatch(private$.on_discard(), error = function(error) {
@@ -379,15 +477,22 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       in_test_server && !isTRUE(getOption("unsaved.wait_for_browser"))
     },
     current = function() {
-      if (!private$fields_known()) return(list())
-      snapshot_inputs(
+      inputs <- if (!private$fields_known()) list() else snapshot_inputs(
         shiny::reactiveValuesToList(private$.session$input),
         private$.inputs,
         private$excluded_ids()
       )
+      values <- list()
+      for (id in names(private$.values)) {
+        # A req() in one late value must not block the other tracked fields.
+        result <- tryCatch(list(private$.values[[id]]()),
+                           shiny.silent.error = function(error) NULL)
+        if (!is.null(result)) values[id] <- result
+      }
+      c(inputs, values)
     },
     sync = function(current, join = TRUE) {
-      baseline <- snapshot_inputs(private$.baseline, private$.inputs, private$excluded_ids())
+      baseline <- private$select_values(private$.baseline)
       if (join) baseline <- join_baseline(baseline, current)
       ready <- private$fields_known()
       if (!identical(baseline, private$.baseline) || ready != private$.password_ready) {
@@ -401,24 +506,69 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
       if (!is.list(request) || !identical(request$instance, private$.instance)) {
         return(invisible(NULL))
       }
+      if (private$.saving) {
+        warning("A save is already pending; the new save request was ignored.", call. = FALSE)
+        return(invisible(NULL))
+      }
+      snapshot <- shiny::isolate(private$.current())
+      reason <- normalise_reason(request$reason)
+      if (private$.require_reason && is.null(reason)) {
+        private$.session$sendCustomMessage(
+          "unsaved:saved", list(instance = private$.instance, ok = FALSE)
+        )
+        return(invisible(NULL))
+      }
       ok <- FALSE
       if (!is.null(private$.on_save)) {
         # Errors stay on the server; the browser only learns that saving failed.
         result <- tryCatch(
-          private$.on_save(),
+          if (private$.require_reason) private$.on_save(reason) else private$.on_save(),
           error = function(error) {
             warning(
-              "on_save() failed: ", conditionMessage(error),
+              "on_save() failed", if (!private$.require_reason) paste0(": ", conditionMessage(error)),
               ". The changes are kept as unsaved.", call. = FALSE
             )
             FALSE
           }
         )
+        # promises is a Shiny dependency and is available whenever the app can
+        # create a promise. Keep it in Suggests and guard namespace access.
+        if (requireNamespace("promises", quietly = TRUE) && promises::is.promise(result)) {
+          private$.saving <- TRUE
+          promises::then(result,
+            onFulfilled = function(value) {
+              private$finish_save(identical(value, TRUE), snapshot)
+              if (!identical(value, TRUE)) {
+                warning("on_save() promise resolved to ",
+                        if (private$.require_reason) "an invalid result" else describe_value(value),
+                        "; it must resolve to TRUE. The changes are kept as unsaved.",
+                        call. = FALSE)
+              }
+              NULL
+            },
+            onRejected = function(error) {
+              private$finish_save(FALSE, snapshot)
+              # With a reason, the error may quote it, so leave the detail out.
+              detail <- if (private$.require_reason) "" else paste0(": ", paste(
+                if (inherits(error, "condition")) conditionMessage(error) else as.character(error),
+                collapse = " "
+              ))
+              warning("on_save() promise rejected", detail,
+                      ". The changes are kept as unsaved.", call. = FALSE)
+              NULL
+            }
+          )
+          return(invisible(NULL))
+        }
         ok <- identical(result, TRUE)
         if (!ok && !identical(result, FALSE)) {
           warning(
-            "on_save() returned ", describe_value(result), ". ",
+            "on_save() returned ", if (private$.require_reason) "an invalid result" else describe_value(result), ". ",
             "on_save() must return TRUE after it has finished saving. ",
+            if (inherits(result, "ExtendedTask")) paste0(
+              "Return the promise instead, for example promises::future_promise() ",
+              "or mirai::mirai() wrapped in a promise. "
+            ),
             "The changes are kept as unsaved.",
             call. = FALSE
           )
@@ -430,6 +580,22 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
         list(instance = private$.instance, ok = ok)
       )
     },
+    finish_save = function(ok, snapshot) {
+      private$.saving <- FALSE
+      if (private$.destroyed) return(invisible(NULL))
+      if (ok) {
+        self$mark_saved(values = snapshot)
+        # mark_saved publishes clean for record loading. An async save instead
+        # needs to publish edits made since its snapshot before the save reply.
+        shiny::isolate(private$publish(
+          changed_inputs(private$.baseline, private$.current(), private$.compare)
+        ))
+      }
+      private$.session$sendCustomMessage(
+        "unsaved:saved", list(instance = private$.instance, ok = ok)
+      )
+      invisible(NULL)
+    },
     handle_confirm = function(request) {
       pending <- private$.pending
       if (!is.list(request) || is.null(pending) ||
@@ -437,6 +603,14 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
             !identical(request$token, pending$token)) return(invisible(NULL))
       if (identical(request$choice, "keep")) {
         private$.pending <- NULL
+      } else if (isTRUE(pending$reason_only)) {
+        reason <- normalise_reason(request$reason)
+        if (identical(request$choice, "save") && !is.null(reason)) {
+          private$.pending <- NULL
+          tryCatch(pending$action(reason), error = function(error) {
+            warning("The reason action failed.", call. = FALSE)
+          })
+        }
       } else if (identical(request$choice, "discard")) {
         private$.pending <- NULL
         # The client has restored inputs and sent their echo before this event.
@@ -451,7 +625,7 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
     client_values = function() {
       shiny::isolate({
         if (!private$fields_known()) return(list())
-        restorable_values(self$baseline())
+        restorable_values(snapshot_inputs(self$baseline(), private$.inputs))
       })
     },
     config = function() {
@@ -469,6 +643,12 @@ UnsavedTracker <- R6Class("UnsavedTracker", cloneable = FALSE,
         confirmInput = ns("unsaved_confirm_requested"),
         text = private$.text,
         canSave = !is.null(private$.on_save),
+        requireReason = private$.require_reason,
+        valueIds = as.list(unname(vapply(names(private$.values), ns, character(1)))),
+        valueOutputs = stats::setNames(
+          as.list(unname(vapply(private$.value_outputs, ns, character(1)))),
+          vapply(names(private$.value_outputs), ns, character(1))
+        ),
         guardClicks = private$.guard_clicks && !shiny::isolate(private$.pause_state()),
         guardNav = private$.guard_nav && !shiny::isolate(private$.pause_state()),
         guardUnload = private$.guard_unload && !shiny::isolate(private$.pause_state())

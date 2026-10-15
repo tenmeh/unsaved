@@ -55,8 +55,8 @@ badge counts distinct changed fields across all trackers, including modules.
 
 ## The tracker
 
-`unsaved_track(inputs)` returns a tracker. `inputs` is required: list the ids of
-the inputs that make up your form. Optional names are field labels, for example
+`unsaved_track(inputs)` returns a tracker. List the ids of the inputs that
+make up your form, or supply server `values`. Optional names are labels, for example
 `unsaved_track(c("Full name" = "name", Role = "role"))`. Ids must be unique.
 Action buttons, tab selections and the package's own inputs are never tracked.
 Password fields are never tracked because their values must stay out of saved
@@ -75,6 +75,7 @@ A reported password id stays excluded for the life of its tracker.
 | `discard()` | Request that the browser restore saved values through input bindings. |
 | `pause()`, `resume()` | Hide and restore markers, badge counts and guards; queries stay truthful. |
 | `confirm(action)` | Run a function now if clean; otherwise ask, even while paused. |
+| `ask_reason(action)` | Ask for a reason, then call `action(reason)` on Save. |
 | `destroy()` | Stop tracking and remove markers, badge counts and guards. Safe to repeat. |
 
 Use `diff()` to build a review screen. It returns `name`, `label`, `change`,
@@ -98,8 +99,8 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 })
 ```
 
-- `on_save()` must finish saving and return exactly `TRUE` before the tracker
-  marks the values saved and permits navigation.
+- `on_save()` must return exactly `TRUE`, or a promise that resolves to exactly
+  `TRUE`, before the tracker marks values saved and permits navigation.
 - If `on_save()` stops with an error or returns `FALSE`, the user stays on the
   tab, keeps their changes, and sees "Could not save. Your changes are still
   here." The error message goes to a server warning, not to the browser.
@@ -107,13 +108,35 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
   is busy. Discarding does not wait.
 - With more than one tracker, the button shows only when every tracker with
   unsaved changes has an `on_save`.
-- Any result other than `TRUE` or `FALSE`, including NULL, NA, a number, a
-  promise or an `ExtendedTask`, fails the save and raises one server warning.
+- Other results, including NULL, NA, a number or an `ExtendedTask`, fail the
+  save and raise one server warning.
 - **Keep editing** cancels navigation, not a save already requested.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
 One can succeed while another fails. Nothing is rolled back. Use one tracker
 and one save for fields that must save together.
+
+For asynchronous saving, read inputs before starting the worker and return
+the promise. Configure a future worker plan when the app starts.
+
+```r
+tracker <- unsaved_track("name", on_save = function() {
+  name <- input$name
+  promises::future_promise({
+    save_record(name)
+    TRUE
+  })
+})
+```
+
+The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
+taken when the save starts, so edits made during the save stay unsaved.
+A promise that resolves to `FALSE` or any other value, or rejects, keeps the
+baseline and raises one server warning. Rejection messages stay on the server.
+Only one save per tracker can be pending; another request is ignored with a
+warning. The dialog shows "Saving..." until the reply. Keep editing cancels
+navigation only. Return the promise, not an `ExtendedTask`; for example use
+`promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
 
 ### Save errors
 
@@ -134,6 +157,109 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 
 Use your app's logger in place of `message()` if needed. After correcting the
 problem, the user can select Save and leave again to retry.
+
+## Track an edited table on the server
+
+DT and rhandsontable send edit events, not a complete saved table. Keep the
+edited table in a reactiveVal and give that reactive to `values`. This DT
+example belongs inside the app's server function; the UI needs
+`DT::DTOutput("visits_table")` and Save and Discard action buttons.
+
+```r
+table_rv <- reactiveVal(data.frame(visit = 1:3, score = c(2, 4, 6)))
+tracker <- unsaved_track(
+  inputs = character(),
+  values = list(Visits = table_rv),
+  value_outputs = c(Visits = "visits_table"),
+  on_discard = function() table_rv(tracker$baseline()$Visits)
+)
+output$visits_table <- DT::renderDT({
+  DT::datatable(table_rv(), editable = TRUE, rownames = FALSE,
+                selection = "none")
+}, server = TRUE)
+observeEvent(input$visits_table_cell_edit, {
+  table_rv(DT::editData(table_rv(), input$visits_table_cell_edit,
+                       rownames = FALSE))
+})
+observeEvent(input$save, {
+  save_visits(table_rv())  # your app's storage function
+  tracker$mark_saved()
+})
+observeEvent(input$discard, tracker$discard())
+```
+
+The list names are the value ids and labels. They must be unique and must
+not clash with input ids. Supply at least one input or value. A reactive
+expression also works: its first available result becomes the baseline.
+Data frames compare column by column, using the usual comparison rules;
+`compare = list(Visits = identical)` selects an exact comparison.
+
+Changed values appear in `is_dirty()`, `count()`, `changed()` and `diff()`,
+and count towards the badge. For example, a change summary can read
+"a table of 12 rows -> a table of 13 rows". Input changes appear first in
+`diff()`, followed by server values in list order. `value_outputs` is optional:
+without it, the value has no field marker. Use module-local output ids.
+
+`mark_saved()` snapshots server values too. To supply saved data explicitly,
+use `tracker$mark_saved(values = list(Visits = saved_table))`. The package
+never sends these values to the browser, even on discard. The table widget
+still renders the data that your app gives it. Restoring the reactiveVal is
+the app's job: `discard()` calls `on_discard`, which reads `tracker$baseline()`
+in the example. Without that callback, the edited server value stays dirty.
+
+## Reason for change and audit trails
+
+Set `require_reason = TRUE` to require a reason for Save and leave.
+`on_save` must then take exactly one argument named `reason`. With the default
+`require_reason = FALSE`, it must take no arguments.
+
+The following server example appends changes to an in-memory audit table.
+Replace this store with your app's persistent audit table, and write the
+record and audit entry in one transaction. `authenticated_user()` must return
+the user id from your app's authentication system.
+
+```r
+audit <- reactiveVal(data.frame())
+save_with_reason <- function(reason) {
+  changes <- tracker$diff()
+  changes$reason <- rep(reason, nrow(changes))
+  changes$user <- rep(authenticated_user(), nrow(changes))
+  changes$timestamp <- rep(Sys.time(), nrow(changes))
+  save_record(input$name)  # your app's storage function
+  audit(rbind(audit(), changes))
+  TRUE
+}
+tracker <- unsaved_track("name", require_reason = TRUE,
+  on_save = function(reason) save_with_reason(reason))
+observeEvent(input$save, {
+  tracker$ask_reason(function(reason) {
+    if (isTRUE(save_with_reason(reason))) tracker$mark_saved()
+  })
+})
+```
+
+The package does not store the audit trail; the app does. Capture `diff()`
+before marking the values saved. This feature supplies a reason to your
+app's audit code; it does not implement a regulatory compliance system.
+
+The dialog has a required text area labelled "Reason for change". Save stays
+disabled until the trimmed reason is non-empty. Reasons are trimmed and cut
+to at most 1000 characters, with a visible counter. They go only to the
+server and are never logged by the package. Callback errors use generic
+package warnings when a reason is involved; handle diagnostics in your app
+without exposing the reason.
+
+`tracker$ask_reason(action)` always asks, even when clean or paused, and also
+works with `require_reason = FALSE`. Its dialog has Cancel and Save buttons.
+Cancel does nothing; Save calls `action(reason)` once. The action saves and
+calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
+pending per tracker; a second request warns and is dropped.
+
+Customise the label and the reason-only heading with
+`unsaved_text(reason = "Reason for change",`
+`reason_title = "Why are you making this change?")`. A shared Save and leave
+dialog requires a reason if any involved tracker requires one; that reason
+is passed to each callback that requires it.
 
 ## The navigation guard
 
@@ -234,45 +360,36 @@ skipped. Discard does not undo changes your app has already made to storage.
 
 ## Loading a record
 
-While paused, `is_dirty()`, `count()`, `changed()` and `diff()` still report
-real differences. Use reactive `is_paused()` to show a loading state.
-
-Pause guards and markers, update the inputs, wait for the new values to arrive from the
-browser, mark them saved, then resume. This server recipe loads two text fields
-from your app's `records()` list:
+Set the saved baseline before sending input updates. Here `records()` holds
+saved records with the tracked fields `name` and `location`:
 
 ```r
-pending_record <- reactiveVal(NULL)
 observeEvent(input$load, {
-  req(is.null(pending_record()))
   record_id <- input$record
   tracker$confirm(function() {
     record <- records()[[record_id]]
-    tracker$pause()
-    pending_record(record)
+    tracker$mark_saved(values = record)
     updateTextInput(session, "name", value = record$name)
     updateTextInput(session, "location", value = record$location)
   })
 })
-observe({
-  record <- pending_record()
-  req(!is.null(record))
-  ready <- identical(input$name, record$name) &&
-    identical(input$location, record$location)
-  if (ready) {
-    tracker$mark_saved()
-    tracker$resume()
-    pending_record(NULL)
-  }
-})
 ```
 
-Here the tracker must list `name` and `location`. Disable editing and saving
-while a load is pending, as guards are paused. Wait for every field that you
-update, using the type its input binding returns. Calling `mark_saved()` right
-after `update*Input()` is wrong: the updates have not reached the browser yet,
-so it captures the old server values. A field that appears later takes its
-first value as saved.
+`values` is a named list keyed by tracked input id. Omitted ids use their
+current input values. Unknown ids are errors; password ids are ignored.
+File values can be saved on the server but are never sent to the browser.
+With no argument, `mark_saved()` still captures current input values.
+
+The browser receives a clean state immediately. Until the updated values
+return, server comparisons can briefly report the old inputs as dirty.
+The next server comparison decides the state; matching echoes leave it clean.
+Supply values with the types returned by each input binding. Use `confirm()`
+before replacing edits, as above.
+
+The pause, update, wait for every echo, `mark_saved()`, resume pattern is still
+useful when the final values are not known in advance, or updates span several
+round trips. Disable editing and saving while that load is pending. Paused
+queries still report real differences; `is_paused()` can show a loading state.
 
 ## Modules and rewind
 
@@ -306,9 +423,12 @@ inside a text box uses the browser's own undo.
 
 ## Limits
 
-- Dirty state needs a round trip to the server. An edit made while the server
-  is busy is protected only once the server has seen it and sent the new state
-  back to the browser.
+- For cached, restorable inputs, the close-tab warning is armed as soon as the
+  browser reports a changed value, even while the server is busy. Paused trackers
+  and `guard_unload = FALSE` are excluded. Markers, badges, tab and click guards
+  still follow the server. The browser uses JSON equality; the next server state
+  wins, including custom comparisons. Password and file inputs have no
+  provisional protection.
 - Browsers show their own close or refresh warning, ignore any custom text, and
   may not show it at all if the user has not used the page. Treat it as a
   courtesy, not a guarantee.
@@ -321,8 +441,8 @@ inside a text box uses the browser's own undo.
 
 ## What unsaved does not do
 
-- Track grid edits in DT or rhandsontable as a whole table. An edit event is
-  not the whole table; these editors need an app-specific adapter.
+- Apply grid edit events to your data. Keep the edited table in a reactiveVal
+  and track it with `values` as shown above.
 - Put back an uploaded file.
 - Recover a lost session or its unsaved edits.
 - Resolve conflicts between two users editing the same record.

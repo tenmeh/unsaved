@@ -3,10 +3,8 @@ server <- function(input, output, session) {
   records <- reactiveVal(initial_records)
   active <- reactiveVal("ada")
   contact_visible <- reactiveVal(FALSE)
-  loading <- reactiveVal(FALSE)
 
   save_profile <- function() {
-    req(!loading())
     values <- isolate(reactiveValuesToList(input))[names(field_labels)]
     current <- records()
     record <- current[[active()]]
@@ -45,26 +43,16 @@ server <- function(input, output, session) {
     if (n == 1L) return("1 field differs from the saved profile.")
     paste(n, "fields differ from the saved profile.")
   })
-  # Add the attribute only when needed: disabled="FALSE" would still disable
-  # the button, and actionButton(disabled =) needs Shiny 1.10 or later.
-  output$load_control <- renderUI({
-    button <- actionButton("load", "Load another record")
-    if (loading()) {
-      button <- tagAppendAttributes(button, disabled = NA)
-    }
-    button
-  })
+  output$load_control <- renderUI(actionButton("load", "Load another record"))
 
   # Confirm the action before replacing the current record.
-  # Wait for the browser to echo every updated input before setting a baseline.
   observeEvent(input$load, {
-    req(!loading(), input$record %in% names(records()))
+    req(input$record %in% names(records()))
     record_id <- input$record
     tracker$confirm(function() {
-      loading(TRUE)
-      tracker$pause()
       active(record_id)
       record <- records()[[active()]]
+      tracker$mark_saved(values = record)
       updateTextInput(session, "name", value = record$name)
       updateSelectInput(session, "role", selected = record$role)
       updateTextInput(session, "location", value = record$location)
@@ -73,19 +61,6 @@ server <- function(input, output, session) {
       if (contact_visible()) updateTextInput(session, "contact", value = record$contact)
     })
   })
-  observe({
-    req(loading())
-    record <- records()[[active()]]
-    ids <- names(field_labels)
-    if (!contact_visible()) ids <- setdiff(ids, "contact")
-    ready <- vapply(ids, function(id) identical(input[[id]], record[[id]]), logical(1))
-    if (all(ready)) {
-      tracker$mark_saved()
-      tracker$resume()
-      loading(FALSE)
-    }
-  })
-
   # Tag builders escape field values, including free text entered by visitors.
   display_value <- function(value) {
     if (is.null(value) || !length(value) || identical(value, "")) return("(empty)")

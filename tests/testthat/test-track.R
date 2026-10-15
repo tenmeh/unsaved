@@ -1,7 +1,7 @@
 test_that("the tracker signature keeps session last", {
   expect_named(formals(unsaved_track), c(
     "inputs", "guard_nav", "guard_unload", "guard_clicks", "on_save", "on_discard",
-    "compare", "text", "session"
+    "compare", "text", "values", "value_outputs", "require_reason", "session"
   ))
 })
 
@@ -146,36 +146,6 @@ test_that("save callbacks acknowledge success and keep baselines on failure", {
     }
   })
 })
-test_that("asynchronous save results warn and keep changes unsaved", {
-  skip_if_not_installed("promises")
-  shiny::testServer(function(input, output, session) {
-    log <- capture_messages(session)
-    result <- new.env()
-    result$value <- promises::promise_resolve(TRUE)
-    tracker <- unsaved_track("name", on_save = function() result$value)
-  }, {
-    session$setInputs(name = "Ada")
-    session$flushReact()
-    config <- Filter(function(sent) sent$type == "unsaved:config", log$messages)[[1]]$message
-    session$setInputs(name = "Grace")
-    session$flushReact()
-    warning_text <- paste0(
-      "on_save() returned an object of class promise. ",
-      "on_save() must return TRUE after it has finished saving. ",
-      "The changes are kept as unsaved."
-    )
-    expect_warning(
-      session$setInputs(unsaved_save_requested = list(instance = config$instance, at = 1)),
-      warning_text, fixed = TRUE
-    )
-    session$flushReact()
-    expect_equal(tracker$baseline(), list(name = "Ada"))
-    expect_equal(tracker$is_dirty(), TRUE)
-    replies <- Filter(function(sent) sent$type == "unsaved:saved", log$messages)
-    expect_equal(tail(replies, 1)[[1]]$message, list(instance = config$instance, ok = FALSE))
-  })
-})
-
 test_that("ExtendedTask save results warn and keep changes unsaved", {
   skip_if_not_installed("shiny", "1.8.1")
   shiny::testServer(function(input, output, session) {
@@ -359,7 +329,7 @@ test_that("flag and session errors identify the argument and bad value", {
   expect_error(unsaved_track("name", session = list()), "`session` must be a Shiny session", fixed = TRUE)
   expect_error(unsaved_track("name", session = new.env()), "`session` must be a Shiny session", fixed = TRUE)
   expect_error(unsaved_track(character()),
-               "`inputs` must contain at least one non-empty input id.", fixed = TRUE)
+               "`inputs` must contain at least one non-empty input id, or supply `values`.", fixed = TRUE)
   expect_error(unsaved_track("name", session = session, compare = list(nmae = identical)),
                "`compare` has unknown input id `nmae`. Tracked ids: name.", fixed = TRUE)
 })

@@ -65,3 +65,48 @@ check_callback <- function(value, name, allow_null = TRUE) {
   }
   invisible(NULL)
 }
+
+check_reason_callback <- function(value, name, allow_null = FALSE) {
+  if (allow_null && is.null(value)) return(invisible(NULL))
+  valid <- is.function(value) && !is.primitive(value) &&
+    length(formals(value)) == 1L && !"..." %in% names(formals(value)) &&
+    (name != "on_save" || identical(names(formals(value)), "reason"))
+  if (!valid) {
+    stop("`", name, "` must be ", if (allow_null) "NULL or " else "",
+         "a function with exactly one argument, `reason`.", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+normalise_reason <- function(reason) {
+  if (!is.character(reason) || length(reason) != 1L || is.na(reason)) return(NULL)
+  reason <- substr(trimws(reason, whitespace = "[\\h\\v]"), 1L, 1000L)
+  if (!nzchar(reason)) return(NULL)
+  reason
+}
+
+validate_tracked_values <- function(values, inputs, value_outputs) {
+  named <- function(x) {
+    if (!length(x)) return(TRUE)
+    !is.null(names(x)) && !anyNA(names(x)) &&
+      all(nzchar(names(x))) && !anyDuplicated(names(x))
+  }
+  valid_values <- is.null(values) || (
+    is.list(values) && !is.data.frame(values) && named(values) &&
+      all(vapply(values, shiny::is.reactive, logical(1)))
+  )
+  if (!valid_values) {
+    stop("`values` must be NULL or a uniquely named list of reactive expressions or reactiveVals.", call. = FALSE)
+  }
+  if (length(intersect(inputs, names(values)))) {
+    stop("Value ids must not clash with input ids.", call. = FALSE)
+  }
+  valid_outputs <- is.null(value_outputs) || (
+    is.character(value_outputs) && named(value_outputs) && !anyNA(value_outputs) &&
+      all(nzchar(value_outputs)) && !length(setdiff(names(value_outputs), names(values)))
+  )
+  if (!valid_outputs) {
+    stop("`value_outputs` must be NULL or a named character vector mapping value ids to output ids.", call. = FALSE)
+  }
+  invisible(NULL)
+}
