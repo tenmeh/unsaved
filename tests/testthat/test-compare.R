@@ -80,3 +80,55 @@ test_that("text flags name invalid values", {
   expect_error(unsaved_compare_text(empty_is_null = "yes"),
                '`empty_is_null` must be TRUE or FALSE; got "yes".', fixed = TRUE)
 })
+
+test_that("table changes describe cells in row order and bound the summary", {
+  saved <- data.frame(value = c(12, 24), flag = c("", "Check"))
+  current <- saved
+  current$value[1] <- 14
+  expect_equal(format_change(saved, current), "row 1, value: 12 -> 14")
+  current$flag[1] <- "Checked"
+  current$value[2] <- 25
+  first_three <- paste(
+    'row 1, value: 12 -> 14; row 1, flag: "" -> Checked;',
+    "row 2, value: 24 -> 25"
+  )
+  expect_equal(format_change(saved, current), first_three)
+  current$flag[2] <- "Done"
+  expect_equal(format_change(saved, current), paste0(first_three, "; and 1 more cells"))
+  saved$extra <- c(1, 2)
+  current$extra <- c(1, 3)
+  expect_equal(format_change(saved, current), paste0(first_three, "; and 2 more cells"))
+  expect_equal(format_change(saved, saved), "no change")
+  expect_equal(format_change(saved[FALSE, ], saved[FALSE, ]), "no change")
+  expect_equal(format_change(data.frame(), data.frame()), "no change")
+})
+
+test_that("table cell descriptions use value formatting and comparison", {
+  saved <- data.frame(value = c(NA_real_, 12), day = as.Date(c("2026-01-01", "2026-01-02")))
+  current <- saved
+  current$value <- c(14, 12 + 1e-10)
+  current$day[2] <- as.Date("2026-01-03")
+  expect_equal(format_change(saved, current),
+               "row 1, value: NA -> 14; row 2, day: 2026-01-02 -> 2026-01-03")
+  saved <- data.frame(flag = factor("Check"), note = "short")
+  current <- data.frame(flag = factor("Done"), note = strrep("x", 60))
+  expect_equal(format_change(saved, current), paste0(
+    "row 1, flag: Check -> Done; row 1, note: short -> ", format_value(current$note)
+  ))
+  saved <- data.frame(value = 12)
+  current <- data.frame(value = NA_real_)
+  expect_equal(format_change(saved, current), "row 1, value: 12 -> NA")
+})
+
+test_that("table structure changes retain table summaries", {
+  saved <- data.frame(value = c(12, 24), flag = c("", "Check"))
+  expect_equal(format_change(saved, saved[1, ]), "a table of 2 rows -> a table of 1 row")
+  expect_equal(format_change(saved, saved[FALSE, ]), "a table of 2 rows -> a table of 0 rows")
+  expect_equal(format_change(saved, saved[, "value", drop = FALSE]),
+               "a table of 2 rows -> a table of 2 rows")
+  current <- saved
+  names(current)[1] <- "result"
+  expect_equal(format_change(saved, current), "a table of 2 rows -> a table of 2 rows")
+  expect_equal(format_change(saved, saved[, c("flag", "value")]),
+               "a table of 2 rows -> a table of 2 rows")
+})

@@ -1,4 +1,4 @@
-make_round4_app <- function() {
+make_values_reason_app <- function(custom_text = FALSE) {
   skip_on_cran()
   path <- local_app_file(c(
     "library(shiny)",
@@ -6,7 +6,8 @@ make_round4_app <- function() {
     "ui <- fluidPage(unsaved_badge(), textOutput('reason_received'),",
     "textOutput('own_received'), actionButton('own_save', 'Save'),",
     "tabsetPanel(id = 'tabs', tabPanel('Form', value = 'form',",
-    "tableOutput('visits_table'), actionButton('edit', 'Edit table')),",
+    "tableOutput('visits_table'), actionButton('edit', 'Edit table'),",
+    "actionButton('refresh', 'Render again'), actionButton('destroy', 'Destroy tracker')),",
     "tabPanel('Other', value = 'other', 'Other panel')))",
     "server <- function(input, output, session) {",
     "visits <- reactiveVal(data.frame(visit = 1L))",
@@ -14,12 +15,17 @@ make_round4_app <- function() {
     "own_received <- reactiveVal('none')",
     "tracker <- unsaved_track(values = list(Visits = visits),",
     "value_outputs = c(Visits = 'visits_table'), require_reason = TRUE,",
+    if (custom_text) paste0(
+      "text = unsaved_text(reason_cancel = 'Back', ",
+      "reason_save = 'Record reason'),"
+    ),
     "on_save = function(reason) { reason_received(reason); TRUE },",
     "on_discard = function() visits(tracker$baseline()$Visits))",
-    "output$visits_table <- renderTable(visits())",
+    "output$visits_table <- renderTable({ input$refresh; visits() })",
     "output$reason_received <- renderText(reason_received())",
     "output$own_received <- renderText(own_received())",
     "observeEvent(input$edit, visits(data.frame(visit = 1:2)))",
+    "observeEvent(input$destroy, tracker$destroy())",
     "observeEvent(input$own_save, tracker$ask_reason(function(reason) {",
     "own_received(reason); tracker$mark_saved() }))",
     "}",
@@ -36,25 +42,89 @@ fill_reason <- function(app, value) {
   ))
 }
 
+test_that("reason-only dialog uses custom button labels", {
+  app <- make_values_reason_app(custom_text = TRUE)
+  app$click("own_save")
+  app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
+  expect_equal(app$get_js(
+    "document.querySelector('.unsaved-dialog .btn-secondary').textContent"
+  ), "Back")
+  expect_equal(app$get_js(
+    "document.querySelector('.unsaved-dialog .btn-primary').textContent"
+  ), "Record reason")
+  expect_no_shiny_errors(app)
+})
+
 test_that("server table edits show a badge and mapped output marker", {
-  app <- make_round4_app()
+  app <- make_values_reason_app()
   expect_equal(badge_text(app), "")
+  app$run_js(paste0(
+    "var hint = document.createElement('span'); hint.id = 'existing-description';",
+    "hint.textContent = 'Existing description'; document.body.appendChild(hint);",
+    "document.getElementById('visits_table').setAttribute('aria-describedby', hint.id);"
+  ))
   app$click("edit")
   app$wait_for_idle()
   app$wait_for_js("document.getElementById('visits_table').hasAttribute('data-unsaved')")
   expect_equal(badge_text(app), "1 unsaved change")
-  expect_equal(app$get_js("document.getElementById('visits_table').classList.contains('unsaved-marker')"), TRUE)
+  sibling_marker <- paste0(
+    "document.getElementById('visits_table').previousElementSibling",
+    ".classList.contains('unsaved-output-marker')"
+  )
+  expect_true(app$get_js(sibling_marker))
+  expect_false(app$get_js("document.getElementById('visits_table').classList.contains('unsaved-marker')"))
+  expect_equal(app$get_js("document.querySelector('#visits_table .unsaved-sr')"), NULL)
+  description <- app$get_js(paste0(
+    "document.getElementById('visits_table').previousElementSibling.querySelector('.unsaved-sr').id"
+  ))
+  expect_equal(app$get_js(paste0("document.getElementById('", description, "').textContent")), "(unsaved)")
+  expect_equal(app$get_js("document.getElementById('visits_table').getAttribute('aria-describedby')"),
+               paste("existing-description", description))
+  app$click("refresh")
+  app$wait_for_idle()
+  expect_true(app$get_js(sibling_marker))
+  expect_equal(app$get_js(paste0(
+    "document.getElementById('visits_table').previousElementSibling.querySelector('.unsaved-sr').id"
+  )), description)
   app$run_js("document.querySelector('a[data-value=other]').click()")
   app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
   app$wait_for_idle()
   expect_equal(badge_text(app), "")
   expect_equal(marker_count(app), 0)
+  expect_equal(app$get_js(paste0("document.getElementById('", description, "')")), NULL)
+  expect_equal(app$get_js("document.getElementById('visits_table').getAttribute('aria-describedby')"),
+               "existing-description")
   expect_equal(app$get_js("document.querySelectorAll('#visits_table tbody tr').length"), 1)
+  app$set_inputs(tabs = "form")
+  app$click("edit")
+  app$wait_for_idle()
+  expect_true(app$get_js(sibling_marker))
+  app$click("destroy")
+  app$wait_for_idle()
+  expect_equal(marker_count(app), 0)
+  expect_equal(app$get_js("document.querySelectorAll('.unsaved-marker, .unsaved-sr').length"), 0)
+  expect_equal(app$get_js("document.getElementById('visits_table').getAttribute('aria-describedby')"),
+               "existing-description")
+  expect_no_shiny_errors(app)
+})
+
+test_that("removing a mapped output removes its sibling marker", {
+  app <- make_values_reason_app()
+  app$click("edit")
+  app$wait_for_idle()
+  expect_true(app$get_js(paste0(
+    "document.getElementById('visits_table').previousElementSibling.classList.contains('unsaved-output-marker')"
+  )))
+  # Direct DOM removal also needs cleanup, without another Shiny output event.
+  app$run_js("document.getElementById('visits_table').remove()")
+  app$wait_for_js("document.querySelectorAll('.unsaved-marker, .unsaved-sr').length === 0")
+  expect_equal(marker_count(app), 0)
+  expect_equal(badge_text(app), "1 unsaved change")
   expect_no_shiny_errors(app)
 })
 
 test_that("required reason disables Save until filled and reaches on_save", {
-  app <- make_round4_app()
+  app <- make_values_reason_app()
   app$click("edit")
   app$run_js("document.querySelector('a[data-value=other]').click()")
   disabled <- "document.querySelector('.unsaved-dialog .btn-primary').disabled"
@@ -74,7 +144,7 @@ test_that("required reason disables Save until filled and reaches on_save", {
 })
 
 test_that("ask_reason browser Cancel does nothing and Save sends a bounded reason", {
-  app <- make_round4_app()
+  app <- make_values_reason_app()
   app$click("own_save")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog h2').textContent"),

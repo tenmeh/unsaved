@@ -9,6 +9,8 @@
 #' @param unsaved Screen-reader text for changed fields.
 #' @param reason Label for the required reason text area.
 #' @param reason_title Heading for the reason-only dialog.
+#' @param reason_cancel Cancel button in the reason-only dialog.
+#' @param reason_save Save button in the reason-only dialog.
 #' @return A classed list for unsaved_track().
 #' @examples
 #' unsaved_text(title = "Profile changes")
@@ -19,11 +21,13 @@ unsaved_text <- function(title = "Unsaved changes",
                          save = "Save and leave", saving = "Saving...",
                          save_failed = "Could not save. Your changes are still here.",
                          unsaved = "(unsaved)", reason = "Reason for change",
-                         reason_title = "Why are you making this change?") {
+                         reason_title = "Why are you making this change?",
+                         reason_cancel = "Cancel", reason_save = "Save") {
   text <- list(
     title = title, message = message, keep = keep, discard = discard,
     save = save, saving = saving, save_failed = save_failed, unsaved = unsaved,
-    reason = reason, reason_title = reason_title
+    reason = reason, reason_title = reason_title,
+    reason_cancel = reason_cancel, reason_save = reason_save
   )
   for (id in names(text)) {
     value <- text[[id]]

@@ -5,6 +5,8 @@
 <!-- badges: end -->
 
 [Try the live demo](https://tenmeh.github.io/unsaved/articles/live-demo.html).
+The [lab result review app](https://tenmeh.github.io/unsaved/review/) shows
+editable results, review notes and saves with a reason recorded in an audit trail.
 
 `unsaved` helps users of Shiny forms see what they have changed and not saved,
 and asks before they lose it. It marks changed fields, counts the changes, and
@@ -198,7 +200,8 @@ Changed values appear in `is_dirty()`, `count()`, `changed()` and `diff()`,
 and count towards the badge. For example, a change summary can read
 "a table of 12 rows -> a table of 13 rows". Input changes appear first in
 `diff()`, followed by server values in list order. `value_outputs` is optional:
-without it, the value has no field marker. Use module-local output ids.
+with it, the mapped output is outlined while the value is changed; without it,
+the value has no marker. Use module-local output ids.
 
 `mark_saved()` snapshots server values too. To supply saved data explicitly,
 use `tracker$mark_saved(values = list(Visits = saved_table))`. The package
@@ -250,7 +253,8 @@ package warnings when a reason is involved; handle diagnostics in your app
 without exposing the reason.
 
 `tracker$ask_reason(action)` always asks, even when clean or paused, and also
-works with `require_reason = FALSE`. Its dialog has Cancel and Save buttons.
+works with `require_reason = FALSE`. Its button labels come from
+`unsaved_text(reason_cancel = "Cancel", reason_save = "Save")`.
 Cancel does nothing; Save calls `action(reason)` once. The action saves and
 calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
 pending per tracker; a second request warns and is dropped.

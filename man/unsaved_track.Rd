@@ -60,7 +60,7 @@ Their first results become the baseline. Data frames compare column by
 column. These values never enter browser snapshots.}
 
 \item{value_outputs}{NULL or a named character vector mapping value ids to
-output ids. The output container receives the marker. Use local ids in
+output ids. The output is outlined while its value is changed. Use local ids in
 modules. Unmapped values count towards the badge but have no marker.}
 
 \item{require_reason}{Require a reason before Save and leave. If TRUE,

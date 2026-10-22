@@ -43,6 +43,7 @@ local_app_file <- function(lines, prefix, .local_envir = parent.frame()) {
 }
 
 local_app_driver <- function(app_dir, ..., .local_envir = parent.frame()) {
+  testthat::skip_if(identical(Sys.getenv("UNSAVED_SKIP_BROWSER"), "true"), "Browser tests disabled")
   testthat::skip_if_not_installed("shinytest2")
   testthat::skip_if_not_installed("withr")
   chrome_root <- Sys.getenv(
