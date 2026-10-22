@@ -1,14 +1,3 @@
-save_replies <- function(log) {
-  Filter(function(sent) sent$type == "unsaved:saved", log$messages)
-}
-
-settle_save <- function(session) {
-  for (i in seq_len(10L)) {
-    later::run_now(0)
-    session$flushReact()
-  }
-}
-
 test_that("promise results acknowledge TRUE and warn once for each failure", {
   skip_if_not_installed("promises")
   skip_if_not_installed("later")

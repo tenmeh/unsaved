@@ -134,7 +134,7 @@ test_that("save failure stays dirty, shows a safe alert and allows retry", {
   }
 })
 
-test_that("waiting save can be cancelled and its late success never navigates", {
+test_that("waiting save disables Keep editing and Escape until the reply", {
   app <- make_save_app(save = "success")
   open_dialog(app)
   # Hold the actual socket acknowledgement, then deliver it to the real handler.
@@ -155,8 +155,13 @@ test_that("waiting save can be cancelled and its late success never navigates", 
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Saving...")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').disabled"), TRUE)
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-danger').disabled"), TRUE)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-secondary').disabled"), FALSE)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-secondary').disabled"), TRUE)
   app$run_js("document.querySelector('.unsaved-dialog .btn-secondary').click()")
+  app$run_js(paste0(
+    "document.querySelector('.unsaved-dialog').dispatchEvent(",
+    "new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));"
+  ))
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog') !== null"), TRUE)
   app$wait_for_idle()
   expect_equal(app$get_value(output = "saved_count"), "1")
   expect_equal(badge_text(app), "")
@@ -164,7 +169,7 @@ test_that("waiting save can be cancelled and its late success never navigates", 
   expect_equal(app$get_js("window.heldSaved.length"), 1)
   app$run_js("window.heldSaved.shift()()")
   app$wait_for_idle()
-  expect_equal(app$get_value(input = "tabs"), "form")
+  expect_equal(app$get_value(input = "tabs"), "other")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog') === null"), TRUE)
   expect_no_shiny_errors(app)
 })

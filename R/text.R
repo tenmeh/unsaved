@@ -6,6 +6,7 @@
 #' @param save Save and leave button text.
 #' @param saving Text while saving.
 #' @param save_failed Alert after a failed save.
+#' @param save_incomplete Alert when edits made during a save remain unsaved.
 #' @param unsaved Screen-reader text for changed fields.
 #' @param reason Label for the required reason text area.
 #' @param reason_title Heading for the reason-only dialog.
@@ -22,12 +23,14 @@ unsaved_text <- function(title = "Unsaved changes",
                          save_failed = "Could not save. Your changes are still here.",
                          unsaved = "(unsaved)", reason = "Reason for change",
                          reason_title = "Why are you making this change?",
-                         reason_cancel = "Cancel", reason_save = "Save") {
+                         reason_cancel = "Cancel", reason_save = "Save",
+                         save_incomplete = "Saved. Some changes were made while saving and are not saved yet.") {
   text <- list(
     title = title, message = message, keep = keep, discard = discard,
     save = save, saving = saving, save_failed = save_failed, unsaved = unsaved,
     reason = reason, reason_title = reason_title,
-    reason_cancel = reason_cancel, reason_save = reason_save
+    reason_cancel = reason_cancel, reason_save = reason_save,
+    save_incomplete = save_incomplete
   )
   for (id in names(text)) {
     value <- text[[id]]

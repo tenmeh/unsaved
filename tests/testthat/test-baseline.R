@@ -1,4 +1,4 @@
-test_that("explicit saved values publish clean then compare browser echoes", {
+test_that("load_baseline publishes clean then compares browser echoes", {
   shiny::testServer(function(input, output, session) {
     log <- capture_messages(session)
     tracker <- unsaved_track(c("name", "role"))
@@ -6,7 +6,7 @@ test_that("explicit saved values publish clean then compare browser echoes", {
     session$setInputs(name = "Ada", role = "Designer")
     session$setInputs(name = "Edited")
     record <- list(name = "Sam", role = "Developer")
-    expect_identical(tracker$mark_saved(values = record), tracker)
+    expect_identical(tracker$load_baseline(values = record), tracker)
     expect_equal(tracker$baseline(), record)
     expect_equal(tail(log$messages, 1)[[1]]$message$dirty, FALSE)
     expect_equal(tail(log$messages, 1)[[1]]$message$ids, list())

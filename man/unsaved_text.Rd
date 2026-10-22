@@ -16,7 +16,8 @@ unsaved_text(
   reason = "Reason for change",
   reason_title = "Why are you making this change?",
   reason_cancel = "Cancel",
-  reason_save = "Save"
+  reason_save = "Save",
+  save_incomplete = "Saved. Some changes were made while saving and are not saved yet."
 )
 }
 \arguments{
@@ -43,6 +44,8 @@ unsaved_text(
 \item{reason_cancel}{Cancel button in the reason-only dialog.}
 
 \item{reason_save}{Save button in the reason-only dialog.}
+
+\item{save_incomplete}{Alert when edits made during a save remain unsaved.}
 }
 \value{
 A classed list for unsaved_track().

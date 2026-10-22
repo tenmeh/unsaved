@@ -72,11 +72,15 @@ A reported password id stays excluded for the life of its tracker.
 | `changed()` | Reactive. The ids of the changed inputs. |
 | `diff()` | Reactive. A change summary with field labels and saved/current list columns. |
 | `is_paused()` | Reactive. `TRUE` while markers and guards are paused. |
+| `is_saving()` | Reactive. `TRUE` from the start of a save until it settles. |
 | `baseline()` | The saved values, as a named list. Not reactive. |
 | `mark_saved()` | Call after your app saves. The current values become the saved values. |
+| `mark_saved(values = snapshot)` | Acknowledge saved values; later edits stay dirty. |
+| `load_baseline(values)` | Load a record before input updates; publish clean, then compare echoes. |
+| `save()` | Run `on_save`, with a reason dialog if required, and acknowledge its snapshot. |
 | `discard()` | Request that the browser restore saved values through input bindings. |
 | `pause()`, `resume()` | Hide and restore markers, badge counts and guards; queries stay truthful. |
-| `confirm(action)` | Run a function now if clean; otherwise ask, even while paused. |
+| `confirm(action, text = NULL)` | Run a function now if clean; otherwise ask, even while paused. |
 | `ask_reason(action)` | Ask for a reason, then call `action(reason)` on Save. |
 | `destroy()` | Stop tracking and remove markers, badge counts and guards. Safe to repeat. |
 
@@ -112,7 +116,7 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
   unsaved changes has an `on_save`.
 - Other results, including NULL, NA, a number or an `ExtendedTask`, fail the
   save and raise one server warning.
-- **Keep editing** cancels navigation, not a save already requested.
+- **Keep editing** cancels before saving starts. It is disabled while saving.
 
 With several trackers, a shared Save and leave saves each tracker on its own.
 One can succeed while another fails. Nothing is rolled back. Use one tracker
@@ -133,11 +137,15 @@ tracker <- unsaved_track("name", on_save = function() {
 
 The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
 taken when the save starts, so edits made during the save stay unsaved.
+If edits remain, Save and leave keeps the dialog open and shows `save_incomplete`.
+A promise that never settles keeps `is_saving()` TRUE and the dialog waiting.
+Arrange a timeout or rejection in your app. `destroy()` clears the flag but
+does not cancel the save work.
 A promise that resolves to `FALSE` or any other value, or rejects, keeps the
 baseline and raises one server warning. Rejection messages stay on the server.
 Only one save per tracker can be pending; another request is ignored with a
-warning. The dialog shows "Saving..." until the reply. Keep editing cancels
-navigation only. Return the promise, not an `ExtendedTask`; for example use
+warning. The dialog shows "Saving..." until the reply. Escape and Keep editing
+are disabled while saving. Return the promise, not an `ExtendedTask`; use
 `promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
 
 ### Save errors
@@ -198,8 +206,11 @@ Data frames compare column by column, using the usual comparison rules;
 
 Changed values appear in `is_dirty()`, `count()`, `changed()` and `diff()`,
 and count towards the badge. For example, a change summary can read
-"a table of 12 rows -> a table of 13 rows". Input changes appear first in
-`diff()`, followed by server values in list order. `value_outputs` is optional:
+"a table of 12 rows -> a table of 13 rows". `change` is display text; the
+`saved` and `current` list columns hold the evidence. A custom comparator can
+report "table changed" even when the cell scan finds no difference.
+Input changes appear first in `diff()`, followed by server values in list
+order. `value_outputs` is optional:
 with it, the mapped output is outlined while the value is changed; without it,
 the value has no marker. Use module-local output ids.
 
@@ -212,7 +223,7 @@ in the example. Without that callback, the edited server value stays dirty.
 
 ## Reason for change and audit trails
 
-Set `require_reason = TRUE` to require a reason for Save and leave.
+Set `require_reason = TRUE` to require a reason for Save and leave and `save()`.
 `on_save` must then take exactly one argument named `reason`. With the default
 `require_reason = FALSE`, it must take no arguments.
 
@@ -232,14 +243,15 @@ save_with_reason <- function(reason) {
   audit(rbind(audit(), changes))
   TRUE
 }
-tracker <- unsaved_track("name", require_reason = TRUE,
-  on_save = function(reason) save_with_reason(reason))
-observeEvent(input$save, {
-  tracker$ask_reason(function(reason) {
-    if (isTRUE(save_with_reason(reason))) tracker$mark_saved()
-  })
-})
+tracker <- unsaved_track("name",
+  on_save = function(reason) save_with_reason(reason), require_reason = TRUE)
+observeEvent(input$save, tracker$save())
 ```
+
+`tracker$save()` uses the registered `on_save`, with a reason dialog when required.
+It does nothing when clean, warns while pending, and errors without `on_save`.
+The reason dialog waits for completion and shows `save_failed` on failure.
+Without a dialog, failures warn on the server. `is_saving()` is reactive.
 
 The package does not store the audit trail; the app does. Capture `diff()`
 before marking the values saved. This feature supplies a reason to your
@@ -362,6 +374,9 @@ Restoration is tested with these Shiny inputs:
 Shiny binding. Password fields are not tracked. Missing input elements are
 skipped. Discard does not undo changes your app has already made to storage.
 
+`confirm(action, text = unsaved_text(...))` uses text for that dialog only.
+Errors in the action warn and leave the session alive.
+
 ## Loading a record
 
 Set the saved baseline before sending input updates. Here `records()` holds
@@ -372,7 +387,7 @@ observeEvent(input$load, {
   record_id <- input$record
   tracker$confirm(function() {
     record <- records()[[record_id]]
-    tracker$mark_saved(values = record)
+    tracker$load_baseline(values = record)
     updateTextInput(session, "name", value = record$name)
     updateTextInput(session, "location", value = record$location)
   })
@@ -382,9 +397,11 @@ observeEvent(input$load, {
 `values` is a named list keyed by tracked input id. Omitted ids use their
 current input values. Unknown ids are errors; password ids are ignored.
 File values can be saved on the server but are never sent to the browser.
-With no argument, `mark_saved()` still captures current input values.
+`load_baseline(values)` requires a named list. To acknowledge a completed save,
+use `mark_saved(values = snapshot)`; it publishes the real state and keeps later
+edits dirty. With no argument, `mark_saved()` captures current input values.
 
-The browser receives a clean state immediately. Until the updated values
+`load_baseline()` sends a clean state to the browser immediately. Until the updated values
 return, server comparisons can briefly report the old inputs as dirty.
 The next server comparison decides the state; matching echoes leave it clean.
 Supply values with the types returned by each input binding. Use `confirm()`

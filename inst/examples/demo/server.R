@@ -19,8 +19,9 @@ server <- function(input, output, session) {
   text_compare <- setNames(rep(list(unsaved_compare_text()), length(text_ids)), text_ids)
   tracker <- unsaved_track(
     setNames(names(field_labels), unname(field_labels)),
-    on_save = save_profile, compare = text_compare,
-    on_discard = function() showNotification("Changes discarded")
+    on_save = save_profile,
+    on_discard = function() showNotification("Changes discarded"),
+    compare = text_compare
   )
 
   observeEvent(input$save, {
@@ -52,7 +53,7 @@ server <- function(input, output, session) {
     tracker$confirm(function() {
       active(record_id)
       record <- records()[[active()]]
-      tracker$mark_saved(values = record)
+      tracker$load_baseline(values = record)
       updateTextInput(session, "name", value = record$name)
       updateSelectInput(session, "role", selected = record$role)
       updateTextInput(session, "location", value = record$location)

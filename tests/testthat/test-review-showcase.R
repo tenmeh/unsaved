@@ -1,4 +1,5 @@
 test_that("the review showcase saves audit rows and loads a batch baseline", {
+  skip_on_cran()
   for (package in c("DT", "bslib", "promises", "later")) skip_if_not_installed(package)
   withr::local_envvar(R_USER_CACHE_DIR = tempdir())
   env <- new.env(parent = globalenv())
@@ -26,7 +27,8 @@ test_that("the review showcase saves audit rows and loads a batch baseline", {
     session$setInputs(save = 1)
     request <- tail(Filter(function(x) x$type == "unsaved:confirm", log$messages), 1)[[1]]$message
     expect_true(request$reasonOnly)
-    session$setInputs(unsaved_confirm_requested = c(
+    expect_true(request$saveMode)
+    session$setInputs(unsaved_save_requested = c(
       request, list(choice = "save", reason = "  Corrected transcription  ")
     ))
     expect_true(saving())
@@ -55,6 +57,7 @@ test_that("the review showcase saves audit rows and loads a batch baseline", {
     expect_equal(audit()$user, rep("demo reviewer", 4))
     expect_false(anyNA(audit()$timestamp))
     expect_false(tracker$is_dirty())
+    session$setInputs(unsaved_confirm_requested = c(request, list(choice = "save")))
     expect_match(output$changes$html, "No unsaved changes.", fixed = TRUE)
     session$setInputs(batch = "B2", load = 1)
     expect_equal(active_batch(), "B2")

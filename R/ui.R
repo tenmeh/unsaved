@@ -5,7 +5,7 @@
 #' @export
 unsaved_dependency <- function() {
   htmltools::htmlDependency(
-    "unsaved", "0.1.0",
+    "unsaved", as.character(utils::packageVersion("unsaved")),
     src = c(file = "www"), package = "unsaved",
     script = "unsaved.js", stylesheet = "unsaved.css"
   )

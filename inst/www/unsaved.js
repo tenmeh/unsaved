@@ -1,6 +1,7 @@
 (function () {
   "use strict";
   var states = Object.create(null);
+  var removed = new Set();
   var marks = new Map();
   var serial = 0;
   var bypass = false;
@@ -184,6 +185,7 @@
 
   function closeDialog(cancel) {
     if (!dialog) return;
+    if (dialog.waiting && cancel !== false) return;
     if (cancel !== false) confirmReply("keep");
     var target = dialog.target || dialog.previousFocus;
     dialog.backdrop.remove();
@@ -204,11 +206,13 @@
   }
 
   function saveReply(message) {
+    if (removed.has(message.instance)) return;
     var queue = saveRequests[message.instance] || [];
     var attempt = queue.shift();
     if (!attempt || dialog !== attempt.dialog || dialog.attempt !== attempt || !dialog.waiting) return;
     if (!message.ok) {
       dialog.waiting = false;
+      dialog.keep.disabled = false;
       dialog.discard.disabled = false;
       dialog.save.disabled = dialog.reason && !dialog.reason.value.trim();
       if (dialog.reason) dialog.reason.disabled = false;
@@ -217,6 +221,24 @@
       return;
     }
     attempt.remaining.delete(message.instance);
+    if (attempt.remaining.size === 0 && !dialog.saveMode && dialog.instances.some(function (id) {
+      return states[id].ids.length > 0;
+    })) {
+      dialog.waiting = false;
+      dialog.keep.disabled = false;
+      dialog.discard.disabled = false;
+      dialog.save.disabled = false;
+      if (dialog.reason) dialog.reason.disabled = false;
+      dialog.save.textContent = dialog.text.save;
+      var count = new Set();
+      dialog.instances.forEach(function (id) {
+        states[id].ids.forEach(function (value) { count.add(value); });
+      });
+      dialog.message.textContent = dialog.text.message.replace(/\{n\}/g, count.size)
+        .replace(/\{s\}/g, count.size === 1 ? "" : "s");
+      dialog.alert.textContent = dialog.text.save_incomplete;
+      return;
+    }
     if (attempt.remaining.size === 0) navigate(dialog.target);
   }
 
@@ -230,7 +252,7 @@
       return;
     }
     var previousFocus = document.activeElement;
-    var text = states[instances[0]].text;
+    var text = (confirmation && confirmation.text) || states[instances[0]].text;
     var reasonOnly = confirmation && confirmation.reasonOnly;
     var needsReason = reasonOnly || instances.some(function (id) { return states[id].requireReason; });
     var backdrop = document.createElement("div");
@@ -317,7 +339,7 @@
         if (!dialog || dialog.waiting) return;
         var reasonText = reason ? Array.from(reason.value.trim()).slice(0, 1000).join("") : undefined;
         if (needsReason && !reasonText) return;
-        if (reasonOnly) {
+        if (reasonOnly && !dialog.saveMode) {
           confirmReply("save", reasonText);
           closeDialog(false);
           return;
@@ -325,10 +347,12 @@
         dialog.waiting = true;
         if (reason) reason.disabled = true;
         discard.disabled = true;
+        keep.disabled = true;
         save.disabled = true;
         save.textContent = text.saving;
         alert.textContent = "";
-        keep.focus();
+        panel.tabIndex = -1;
+        panel.focus();
         var attempt = {dialog: dialog, remaining: new Set(instances)};
         dialog.attempt = attempt;
         instances.forEach(function (id) {
@@ -355,6 +379,7 @@
       if (e.key === "Tab") {
         e.preventDefault();
         var enabled = buttons.filter(function (button) { return !button.disabled; });
+        if (!enabled.length) return;
         var index = enabled.indexOf(document.activeElement);
         var next = (index + (e.shiftKey ? -1 : 1) + enabled.length) % enabled.length;
         enabled[next].focus();
@@ -362,9 +387,10 @@
     });
     document.body.appendChild(backdrop);
     dialog = {
-      text: text, backdrop: backdrop, target: target, discard: discard,
+      text: text, backdrop: backdrop, target: target, discard: discard, keep: keep, message: message,
       save: save, alert: alert, waiting: false, confirmation: confirmation,
       reason: reason, reasonOnly: reasonOnly,
+      saveMode: confirmation && confirmation.saveMode,
       previousFocus: previousFocus, instances: instances
     };
     keep.focus();
@@ -425,6 +451,7 @@
       reconcile();
     });
     window.Shiny.addCustomMessageHandler("unsaved:config", function (message) {
+      if (removed.has(message.instance)) return;
       var current = state(message.instance);
       current.inputs = message.baseline || {};
       current.guardNav = message.guardNav;
@@ -446,22 +473,26 @@
       reconcile();
     });
     window.Shiny.addCustomMessageHandler("unsaved:state", function (message) {
+      if (removed.has(message.instance)) return;
       state(message.instance).ids = message.ids || [];
       state(message.instance).provisional = false;
       reconcile();
     });
     window.Shiny.addCustomMessageHandler("unsaved:restore", function (message) {
+      if (removed.has(message.instance)) return;
       state(message.instance).inputs = message.inputs || {};
       restore(message.inputs || {});
     });
     window.Shiny.addCustomMessageHandler("unsaved:saved", saveReply);
     window.Shiny.addCustomMessageHandler("unsaved:remove", function (message) {
+      removed.add(message.instance);
       delete states[message.instance];
       delete saveRequests[message.instance];
       if (dialog && dialog.instances.indexOf(message.instance) !== -1) closeDialog(false);
       reconcile();
     });
     window.Shiny.addCustomMessageHandler("unsaved:confirm", function (message) {
+      if (removed.has(message.instance)) return;
       showDialog(null, [message.instance], message);
     });
     window.jQuery(document).on("shiny:bound", function () {
