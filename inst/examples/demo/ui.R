@@ -1,25 +1,14 @@
-# The marker and the badge use the stable CSS hooks of unsaved. Apps can
-# restyle them like this; the defaults use the text colour. The package CSS
-# loads after the theme, so the marker rule starts with "body" to win.
-showcase_rules <- "
-body [data-unsaved='true'] .unsaved-marker::after { background: $primary; }
-[data-unsaved='true'] .form-control,
-[data-unsaved='true'] .form-select { border-color: $primary; }
-.unsaved-badge { color: $primary; }
-"
-
 ui <- page_sidebar(
   title = "unsaved: the team profile editor",
   theme = bs_theme(version = 5, primary = "#237A80",
-                   bg = "#F7F5EF", fg = "#17202A") |>
-    bs_add_rules(showcase_rules),
+                   bg = "#F7F5EF", fg = "#17202A"),
   fillable = FALSE,
+  tags$script(src = "buttons.js"),
   sidebar = sidebar(
     title = "Your editing session", width = 320, open = "always",
     unsaved_badge(),
-    textOutput("status"),
-    actionButton("save", "Save profile", class = "btn-primary"),
-    actionButton("discard", "Discard changes"),
+    actionButton("save", "Save profile", class = "btn-primary", disabled = "disabled"),
+    actionButton("discard", "Discard changes", disabled = "disabled"),
     tags$hr(),
     selectInput("record", "Another team member",
                 c("Ada Morgan" = "ada", "Sam Patel" = "sam")),
@@ -35,9 +24,7 @@ ui <- page_sidebar(
       tags$p(
         class = "mb-0",
         tags$strong("Try this:"),
-        "Edit the name and watch the dot, the badge and the change list.",
-        "Then click the Preferences tab, and choose Save and leave in the dialog.",
-        "Records stay in memory for this session only."
+        "Edit Name. Click Preferences. Choose Save and continue."
       )
     )
   ),
@@ -49,11 +36,7 @@ ui <- page_sidebar(
         textInput("name", "Name", initial_records$ada$name),
         selectInput("role", "Role", c("Designer", "Developer", "Team lead")),
         textInput("location", "Location", initial_records$ada$location),
-        textAreaInput("bio", "About", initial_records$ada$bio, rows = 3),
-        actionButton("add_contact", "Add a contact note"),
-        tags$p(class = "small text-muted",
-               "This field appears after start. Its first value counts as saved."),
-        uiOutput("contact_field")
+        textAreaInput("bio", "About", initial_records$ada$bio, rows = 3)
       ),
       nav_panel("Preferences", value = "preferences",
         tags$h3("Stay in touch"),

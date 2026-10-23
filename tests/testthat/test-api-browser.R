@@ -63,7 +63,7 @@ test_that("guarded buttons ask with tab guards disabled", {
   app$run_js("document.getElementById('exit').click()")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
   expect_equal(app$get_value(output = "calls"), "0")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "calls"), "1")
   expect_equal(app$get_value(input = "name"), "Ada")

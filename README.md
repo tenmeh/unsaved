@@ -18,7 +18,7 @@ tell it are saved.
 - Changed fields get a marker next to their label.
 - A badge shows the count, for example "2 unsaved changes".
 - If the user tries to switch tabs with unsaved changes, a dialog asks them to
-  keep editing, discard the changes, or (optionally) save and leave.
+  keep editing, discard the changes, or (optionally) save and continue.
 - If the user closes or refreshes the browser tab, the browser shows its own
   warning.
 
@@ -93,9 +93,9 @@ returns the same columns with no rows.
 An input that appears after the app starts, for example from `renderUI()`,
 takes its first value as its saved value. Only a later edit counts as a change.
 
-## Save and leave
+## Save and continue
 
-Give `unsaved_track()` an `on_save` function to add a **Save and leave** button
+Give `unsaved_track()` an `on_save` function to add a **Save and continue** button
 to the dialog:
 
 ```r
@@ -118,7 +118,7 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
   save and raise one server warning.
 - **Keep editing** cancels before saving starts. It is disabled while saving.
 
-With several trackers, a shared Save and leave saves each tracker on its own.
+With several trackers, a shared Save and continue saves each tracker on its own.
 One can succeed while another fails. Nothing is rolled back. Use one tracker
 and one save for fields that must save together.
 
@@ -137,7 +137,7 @@ tracker <- unsaved_track("name", on_save = function() {
 
 The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
 taken when the save starts, so edits made during the save stay unsaved.
-If edits remain, Save and leave keeps the dialog open and shows `save_incomplete`.
+If edits remain, Save and continue keeps the dialog open and shows `save_incomplete`.
 A promise that never settles keeps `is_saving()` TRUE and the dialog waiting.
 Arrange a timeout or rejection in your app. `destroy()` clears the flag but
 does not cancel the save work.
@@ -151,7 +151,7 @@ are disabled while saving. Return the promise, not an `ExtendedTask`; use
 ### Save errors
 
 Log errors inside your app's `on_save`, then return `FALSE`. The browser only
-sees the generic message "Could not save. Your changes are still here."
+sees the generic message "Could not save. Your changes are still here. Try again or keep editing."
 
 ```r
 tracker <- unsaved_track(c("name", "age"), on_save = function() {
@@ -166,7 +166,7 @@ tracker <- unsaved_track(c("name", "age"), on_save = function() {
 ```
 
 Use your app's logger in place of `message()` if needed. After correcting the
-problem, the user can select Save and leave again to retry.
+problem, the user can select Save and continue again to retry.
 
 ## Track an edited table on the server
 
@@ -223,7 +223,7 @@ in the example. Without that callback, the edited server value stays dirty.
 
 ## Reason for change and audit trails
 
-Set `require_reason = TRUE` to require a reason for Save and leave and `save()`.
+Set `require_reason = TRUE` to require a reason for Save and continue and `save()`.
 `on_save` must then take exactly one argument named `reason`. With the default
 `require_reason = FALSE`, it must take no arguments.
 
@@ -257,23 +257,24 @@ The package does not store the audit trail; the app does. Capture `diff()`
 before marking the values saved. This feature supplies a reason to your
 app's audit code; it does not implement a regulatory compliance system.
 
-The dialog has a required text area labelled "Reason for change". Save stays
-disabled until the trimmed reason is non-empty. Reasons are trimmed and cut
-to at most 1000 characters, with a visible counter. They go only to the
+The dialog has a required text area labelled "Reason for change (required)".
+Save stays enabled. An empty reason shows an inline error and focuses the field.
+Reasons are trimmed and cut to at most 1000 characters. The counter and cut
+announcement use `reason_count` and `reason_cut`; the error uses `reason_missing`. They go only to the
 server and are never logged by the package. Callback errors use generic
 package warnings when a reason is involved; handle diagnostics in your app
 without exposing the reason.
 
 `tracker$ask_reason(action)` always asks, even when clean or paused, and also
 works with `require_reason = FALSE`. Its button labels come from
-`unsaved_text(reason_cancel = "Cancel", reason_save = "Save")`.
+`unsaved_text(reason_cancel = "Keep editing", reason_save = "Save")`.
 Cancel does nothing; Save calls `action(reason)` once. The action saves and
 calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
 pending per tracker; a second request warns and is dropped.
 
 Customise the label and the reason-only heading with
-`unsaved_text(reason = "Reason for change",`
-`reason_title = "Why are you making this change?")`. A shared Save and leave
+`unsaved_text(reason = "Reason for change (required)",`
+`reason_title = "Why are you making this change?")`. A shared Save and continue
 dialog requires a reason if any involved tracker requires one; that reason
 is passed to each callback that requires it.
 
@@ -312,7 +313,7 @@ observeEvent(input$load, {
 
 Clean trackers run the function at once. A dirty tracker asks even while paused.
 Keep editing cancels. Discard restores inputs, calls `on_discard`, then runs
-the action. Save and leave runs it only after a successful save. The action
+the action. Save and continue runs it only after a successful save. The action
 runs once on the server. While one confirmation is pending, further calls
 to that tracker warn and drop the new action. The new action is not run or
 queued, and the first confirmation stays open. Capture a record id before
@@ -475,7 +476,24 @@ These names are stable, so you can style them:
 | Selector | What it is |
 |---|---|
 | `[data-unsaved="true"]` | The container of a changed input |
-| `.unsaved-sr` | The hidden "(unsaved)" text for screen readers |
+| `.unsaved-sr` | The hidden "Unsaved change" text for screen readers |
 | `.unsaved-badge` | The badge |
 | `.unsaved-dialog` | The dialog panel |
-| `.unsaved-backdrop` | The dialog backdrop |
+| `.unsaved-dialog::backdrop` | The native modal backdrop |
+
+| Custom property | Default |
+|---|---|
+| `--unsaved-color` | `var(--bs-primary, currentColor)` |
+| `--unsaved-dot-size` | `.5em` |
+| `--unsaved-outline` | `2px dashed var(--unsaved-color)` |
+
+Set these properties on an ancestor or the changed element. Custom marker and
+outline colours must have at least 3:1 contrast against the adjacent background.
+Rules use `:where()` so app styles can override them. Changed outputs have a
+dashed outline. Native modal dialogs keep the page behind inert and return focus
+to the opener when closed. Escape keeps editing, except while saving.
+
+`unsaved_badge(label = c(one = "One edit", other = "{n} edits"))` selects
+`one` for a count of one and `other` for larger counts. A single template
+still accepts `{n}` and `{s}`. The default class is `badge text-bg-warning`;
+set `class` to customise it and `live = FALSE` to omit the live region.

@@ -22,7 +22,7 @@ make_managed_save_app <- function(reason = FALSE) {
   local_app_driver(path, .local_envir = parent.frame())
 }
 
-test_that("save and leave stays when edits made during saving remain dirty", {
+test_that("save and continue stays when edits made during saving remain dirty", {
   app <- make_managed_save_app()
   app$set_inputs(name = "Saved snapshot")
   app$run_js("document.querySelector('a[data-value=other]').click()")
@@ -43,8 +43,9 @@ test_that("save and leave stays when edits made during saving remain dirty", {
   expect_equal(app$get_value(input = "tabs"), "form")
   expect_equal(badge_text(app), "1 unsaved change")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"),
-               "You have 1 unsaved change.")
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-secondary').disabled"), FALSE)
+               paste("You have 1 unsaved change.",
+                     "They will be lost if you continue without saving."))
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .unsaved-keep').disabled"), FALSE)
   expect_no_shiny_errors(app)
 })
 
@@ -60,13 +61,9 @@ test_that("managed reason save waits through Escape then closes on success", {
   ))
   app$wait_for_js("document.getElementById('saving').textContent === 'TRUE'")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Saving...")
-  app$run_js(paste0(
-    "document.querySelector('.unsaved-dialog').dispatchEvent(",
-    "new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));",
-    "document.querySelector('.unsaved-dialog .btn-secondary').click();"
-  ))
+  browser_key(app, "Escape", 27L)
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog') !== null"), TRUE)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-secondary').disabled"), TRUE)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .unsaved-keep').disabled"), TRUE)
   app$run_js("Shiny.setInputValue('settle', 1, {priority: 'event'});")
   app$wait_for_js("document.querySelector('.unsaved-dialog') === null")
   app$wait_for_idle()

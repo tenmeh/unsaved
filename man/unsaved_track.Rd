@@ -40,7 +40,7 @@ FALSE, errors and other results fail the save. Failed promises raise one
 server warning. ExtendedTask results are unsupported; return the promise.
 Edits made while a promise is pending stay unsaved.}
 
-\item{require_reason}{Require a reason before Save and leave or save(). If TRUE,
+\item{require_reason}{Require a reason before Save and continue or save(). If TRUE,
 on_save must have exactly one argument named reason. Otherwise it takes
 no arguments. Reasons are trimmed and cut to 1000 characters.}
 
@@ -87,7 +87,7 @@ Password fields are never tracked. Cached values wait for the client's
 password report, and a late report removes an input from the snapshot.
 A reported password id stays excluded for the life of the tracker,
 including after the widget is removed or its id is reused.
-Save and leave waits for a server round trip. Errors are caught without
+Save and continue waits for a server round trip. Errors are caught without
 sending their messages to the browser. Discard sends JSON, so exotic R
 objects may not round-trip. Use module-local ids inside moduleServer().
 
@@ -96,7 +96,7 @@ For a multi-step form, use \code{guard_nav = FALSE} and unsaved_guard() on
 real exit buttons and links. guard_clicks defaults to TRUE independently.
 Use \code{tracker$confirm()} for server actions.
 
-With several trackers, a shared Save and leave saves each one on its own.
+With several trackers, a shared Save and continue saves each one on its own.
 One can succeed while another fails; nothing is rolled back. Use one
 tracker and one save for fields that must save together. Return a promise
 for background work. Only one save per tracker can be pending; further
@@ -214,8 +214,8 @@ their saved values by id. diff() lists input changes then server value changes.
 
 \section{Reason for change and audit trails}{
 
-With require_reason = TRUE, Save and leave requires non-blank text labelled
-by unsaved_text(reason = "Reason for change"). ask_reason() uses reason_title
+With require_reason = TRUE, Save and continue requires non-blank text labelled
+by unsaved_text(reason = "Reason for change (required)"). ask_reason() uses reason_title
 for its heading. Both trim the reason, limit it to 1000 characters and show
 a counter. The reason goes only to the server; the package never logs it.
 Record tracker$diff(), reason, the authenticated user and a timestamp in your
@@ -240,7 +240,7 @@ only sees the generic save failure message. For example:
 }\if{html}{\out{</div>}}
 
 Replace message() with your app's logger if needed. After correcting the
-problem, select Save and leave again to retry.
+problem, select Save and continue again to retry.
 }
 
 \section{Limits}{

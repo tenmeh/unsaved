@@ -51,8 +51,8 @@ test_that("custom text reach dialog, screen readers and save states", {
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog h2').textContent"), "Leave first")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"), "2 edits.")
   expect_equal(app$get_js("document.querySelector('.unsaved-sr').textContent"), "(changed)")
-  expect_equal(app$get_js("document.querySelector('.btn-secondary').textContent"), "Stay")
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-danger').textContent"), "Reset")
+  expect_equal(app$get_js("document.querySelector('.unsaved-keep').textContent"), "Stay")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-outline-danger').textContent"), "Reset")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Store")
   app$run_js("
     window.heldSaved = [];
@@ -113,7 +113,7 @@ test_that("module nav input is namespaced and save and discard stay independent"
   expect_equal(badge_text(app), "")
   app$set_inputs(tabs = "form", `first-name` = "Edited again")
   feature_dialog(app)
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(input = "first-name"), "Grace")
   expect_equal(app$get_value(input = "second-name"), "Ada")
@@ -127,7 +127,7 @@ test_that("dialog discard callback runs once for the involved module", {
   feature_dialog(app)
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog h2').textContent"), "Leave second")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"), "1 edit.")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "second-discarded"), "1")
   expect_equal(app$get_value(output = "first-discarded"), "0")

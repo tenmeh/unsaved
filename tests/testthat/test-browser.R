@@ -16,6 +16,18 @@ test_that("radio markers use the group label and preserve descriptions", {
   expect_equal(app$get_js("document.querySelector('#choice .radio label').classList.contains('unsaved-marker')"), FALSE)
   description <- "document.getElementById('choice').getAttribute('aria-describedby')"
   expect_match(app$get_js(description), "existing unsaved-description")
+  expect_equal(app$get_js("document.getElementById('choice').getAttribute('role')"), "group")
+  expect_equal(app$get_js(paste0(
+    "document.getElementById('choice').getAttribute('aria-labelledby') === ",
+    "document.querySelector('#choice > label').id"
+  )), TRUE)
+  app$set_inputs(group = c("A", "B"))
+  app$wait_for_idle()
+  expect_equal(app$get_js("document.getElementById('group').getAttribute('role')"), "group")
+  expect_equal(app$get_js(paste0(
+    "document.getElementById('group').getAttribute('aria-labelledby') === ",
+    "document.querySelector('#group > label').id"
+  )), TRUE)
   app$click("save")
   app$wait_for_idle()
   expect_equal(app$get_js(description), "existing")
@@ -30,18 +42,26 @@ test_that("navigation blocks, keeps editing, then discards and leaves", {
   expect_equal(app$get_value(input = "tabs"), "form")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog').getAttribute('role')"), "dialog")
   expect_equal(app$get_js("document.activeElement.textContent"), "Keep editing")
-  expect_equal(app$get_js("document.activeElement.className"), "btn btn-secondary")
-  keydown <- "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'Tab', bubbles:true}))"
-  app$run_js(keydown)
-  expect_equal(app$get_js("document.activeElement.textContent"), "Discard changes")
-  expect_equal(app$get_js("document.activeElement.className"), "btn btn-danger")
-  app$run_js(keydown)
-  expect_equal(app$get_js("document.activeElement.textContent"), "Keep editing")
-  app$run_js("document.querySelector('.unsaved-dialog button').click()")
+  expect_equal(app$get_js("document.activeElement.className"), "unsaved-keep btn btn-primary")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog').tagName"), "DIALOG")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog').matches(':modal')"), TRUE)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog').hasAttribute('open')"), TRUE)
+  expect_equal(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.unsaved-dialog-actions button'))",
+    ".map(x => x.textContent).join('|')"
+  )), "Discard and continue|Keep editing")
+  app$run_js("document.getElementById('save').focus()")
+  expect_equal(app$get_js("document.activeElement.id === 'save'"), FALSE)
+  for (i in seq_len(6L)) {
+    browser_key(app, "Tab", 9L)
+    expect_equal(app$get_js("document.activeElement.id === 'save'"), FALSE)
+  }
+  browser_key(app, "Escape", 27L)
+  app$wait_for_js("document.querySelector('.unsaved-dialog') === null")
   expect_equal(app$get_value(input = "tabs"), "form")
   expect_equal(app$get_js("document.activeElement.getAttribute('data-value')"), "other")
   app$run_js("document.querySelector('a[data-value=other]').click()")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(input = "tabs"), "other")
   expect_equal(app$get_value(input = "name"), "Ada")

@@ -62,9 +62,9 @@ and `is_dirty()` tells you whether there are changes. Use `baseline()` for
 the saved values. The first value of a field added by `renderUI()` after
 start joins the baseline automatically.
 
-## Save and leave
+## Save and continue
 
-An `on_save` function adds **Save and leave** to the navigation dialog.
+An `on_save` function adds **Save and continue** to the navigation dialog.
 It takes no arguments unless `require_reason = TRUE`. The tracker marks
 values saved after it returns
 exactly `TRUE` or its promise resolves to exactly `TRUE`, then opens the
@@ -89,7 +89,7 @@ tracker <- unsaved_track("name", on_save = function() {
 
 The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
 taken when the save starts, so edits made during the save stay unsaved.
-If edits remain, Save and leave keeps the dialog open and shows `save_incomplete`.
+If edits remain, Save and continue keeps the dialog open and shows `save_incomplete`.
 A promise that never settles keeps `is_saving()` TRUE and the dialog waiting.
 Arrange a timeout or rejection in your app. `destroy()` clears the flag but
 does not cancel the save work.
@@ -100,7 +100,7 @@ warning. The dialog shows "Saving..." until the reply. Escape and Keep editing
 are disabled while saving. Return the promise, not an `ExtendedTask`; use
 `promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
 
-With several trackers, a shared Save and leave saves each tracker on its own.
+With several trackers, a shared Save and continue saves each tracker on its own.
 One can succeed while another fails, and nothing is rolled back. Use one
 tracker and one save for fields that must save together.
 
@@ -125,14 +125,14 @@ observeEvent(input$save, {
   if (isTRUE(save_form())) {
     tracker$mark_saved()
   } else {
-    showNotification("Could not save. Your changes are still here.")
+    showNotification("Could not save. Your changes are still here. Try again or keep editing.")
   }
 })
 ```
 
 Use your app's logger in place of `message()` if needed. Clear the name and
-try Save and leave: the dialog stays open and shows the generic message
-"Could not save. Your changes are still here." Choose Keep editing, enter a
+try Save and continue: the dialog stays open and shows the generic message
+"Could not save. Your changes are still here. Try again or keep editing." Choose Keep editing, enter a
 valid name and try again. Only a successful save changes the saved baseline.
 Storage errors are logged on the server; their details do not reach the browser.
 
@@ -191,7 +191,7 @@ in the example. Without that callback, the edited server value stays dirty.
 
 ## Reason for change and audit trails
 
-Set `require_reason = TRUE` to require a reason for Save and leave and `save()`.
+Set `require_reason = TRUE` to require a reason for Save and continue and `save()`.
 `on_save` must then take exactly one argument named `reason`. With the default
 `require_reason = FALSE`, it must take no arguments.
 
@@ -225,30 +225,31 @@ The package does not store the audit trail; the app does. Capture `diff()`
 before marking the values saved. This feature supplies a reason to your
 app's audit code; it does not implement a regulatory compliance system.
 
-The dialog has a required text area labelled "Reason for change". Save stays
-disabled until the trimmed reason is non-empty. Reasons are trimmed and cut
-to at most 1000 characters, with a visible counter. They go only to the
+The dialog has a required text area labelled "Reason for change (required)".
+Save stays enabled. An empty reason shows an inline error and focuses the field.
+Reasons are trimmed and cut to at most 1000 characters. The counter and cut
+announcement use `reason_count` and `reason_cut`; the error uses `reason_missing`. They go only to the
 server and are never logged by the package. Callback errors use generic
 package warnings when a reason is involved; handle diagnostics in your app
 without exposing the reason.
 
 `tracker$ask_reason(action)` always asks, even when clean or paused, and also
 works with `require_reason = FALSE`. Its button labels come from
-`unsaved_text(reason_cancel = "Cancel", reason_save = "Save")`.
+`unsaved_text(reason_cancel = "Keep editing", reason_save = "Save")`.
 Cancel does nothing; Save calls `action(reason)` once. The action saves and
 calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
 pending per tracker; a second request warns and is dropped.
 
 Customise the label and the reason-only heading with
-`unsaved_text(reason = "Reason for change",`
-`reason_title = "Why are you making this change?")`. A shared Save and leave
+`unsaved_text(reason = "Reason for change (required)",`
+`reason_title = "Why are you making this change?")`. A shared Save and continue
 dialog requires a reason if any involved tracker requires one; that reason
 is passed to each callback that requires it.
 
 ## The navigation guard
 
 The guard stops tab clicks, arrow keys and `updateTabsetPanel()` while the
-form is dirty. The user can keep editing, discard, or save and leave.
+form is dirty. The user can keep editing, discard, or save and continue.
 Call `mark_saved()`, `discard()` (and wait for the restored inputs), or
 `pause()` before navigating from the server. `resume()` restores the guards and markers.
 Set `guard_nav = FALSE` to turn off the navigation guard.
@@ -349,7 +350,7 @@ observeEvent(input$load, {
 
 Clean trackers run the action at once. Dirty trackers open the dialog even
 while paused. Keep editing cancels. Discard restores, calls `on_discard`, then
-runs the action once. Save and leave runs it only after a successful save.
+runs the action once. Save and continue runs it only after a successful save.
 Only one confirmation per tracker can be pending. Calling `confirm()` again
 while waiting warns and drops the new action without running or queuing it.
 The first confirmation stays open. Explicit confirmation works even with
@@ -425,7 +426,7 @@ With edits pending, Close asks before discarding them. Escape and backdrop
 clicks are not guarded otherwise, so use `modalDialog(easyClose = FALSE)`.
 The guard does not intercept a server call to `removeModal()`; confirm other
 server actions before they remove the modal. Add `on_save` and your app's save
-code if the dialog should also offer Save and leave.
+code if the dialog should also offer Save and continue.
 
 ## Modules
 

@@ -17,8 +17,8 @@ Things to try:
 * Double-click a result value and change it. Watch the table marker and badge.
 * Set **Review status** and write a **Review note**, then click **Save review**.
   Enter a reason and save. Open **Audit trail** to see one row per changed field.
-* Edit again and click **Changes**. Choose **Keep editing** or **Save and leave**.
-  Save and leave asks for a reason and shows **Saving...** during the short delay.
+* Edit again and click **Changes**. Choose **Keep editing** or **Save and continue**.
+  Save and continue asks for a reason and shows **Saving...** during the short delay.
 * Try **Discard changes**, or select another batch and click **Load batch**.
   Loading asks before replacing unsaved edits.
 
@@ -44,10 +44,9 @@ Things to try:
 * Edit the name. Watch the dot, the badge and the saved/current value list.
 * Click **Discard changes**, then edit again and click **Save profile**.
 * Edit a field and click **Preferences**. Try **Keep editing**, **Discard
-  changes** and **Save and leave** in the dialog.
-* Click **Add a contact note**. Its first value is saved; edit it to see a dot.
+  and continue** and **Save and continue** in the dialog.
 * Select Sam and click **Load another record**. If you have unsaved changes,
-  a dialog asks you to keep editing, discard, or save and leave.
+  a dialog asks you to keep editing, discard, or save and continue.
   Visit **Saved profile** to see what the app stored.
 
 ```{=html}

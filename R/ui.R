@@ -13,8 +13,11 @@ unsaved_dependency <- function() {
 
 #' Display the Page Total of Unsaved Changes
 #' @description Show the page total of distinct changed fields across trackers.
-#' @param label Text template. `{n}` is the count; `{s}` is the plural suffix.
+#' @param label One non-empty text template, or two non-empty templates named
+#'   `one` and `other`. `one` is used for a count of one, `other` otherwise.
+#'   `{n}` is the count; `{s}` is the plural suffix.
 #' @param class NULL or a character vector of additional CSS classes, without NA.
+#' @param live Whether to announce badge changes in a polite live region.
 #' @return A span filled by the client, with the package assets attached.
 #' @details Badges show the number of distinct dirty fields across all active
 #'   trackers, including modules. Paused trackers do not contribute.
@@ -24,18 +27,27 @@ unsaved_dependency <- function() {
 #' @examples
 #' unsaved_badge()
 #' @export
-unsaved_badge <- function(label = "{n} unsaved change{s}", class = NULL) {
-  if (!is.character(label) || length(label) != 1L || is.na(label)) {
-    stop("`label` must be a single string.", call. = FALSE)
+unsaved_badge <- function(label = "{n} unsaved change{s}",
+                          class = "badge text-bg-warning", live = TRUE) {
+  if (!is.character(label) || anyNA(label) || any(!nzchar(trimws(label))) ||
+        !(length(label) == 1L || (length(label) == 2L &&
+                                    setequal(names(label), c("one", "other"))))) {
+    stop("`label` must be one non-empty string or two non-empty strings named `one` and `other`.",
+         call. = FALSE)
+  }
+  if (!is.logical(live) || length(live) != 1L || is.na(live)) {
+    stop("`live` must be TRUE or FALSE.", call. = FALSE)
   }
   if (!is.null(class) && (!is.character(class) || anyNA(class))) {
     stop("`class` must be NULL or a character vector without missing values.", call. = FALSE)
   }
   badge <- htmltools::tags$span(
     class = paste(c("unsaved-badge", class), collapse = " "),
-    `data-unsaved-label` = label,
-    `aria-live` = "polite",
-    `aria-atomic` = "true"
+    `data-unsaved-label` = if (length(label) == 1L) unname(label) else NULL,
+    `data-unsaved-one` = if (length(label) == 2L) label[["one"]] else NULL,
+    `data-unsaved-other` = if (length(label) == 2L) label[["other"]] else NULL,
+    `aria-live` = if (live) "polite" else NULL,
+    `aria-atomic` = if (live) "true" else NULL
   )
   htmltools::attachDependencies(badge, unsaved_dependency())
 }

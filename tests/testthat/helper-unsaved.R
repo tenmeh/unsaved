@@ -12,6 +12,14 @@ settle_save <- function(session) {
 }
 
 # Browser helpers shared by several test files.
+browser_key <- function(app, key, code) {
+  browser <- app$get_chromote_session()
+  browser$Input$dispatchKeyEvent(type = "keyDown", key = key,
+                                 windowsVirtualKeyCode = code)
+  browser$Input$dispatchKeyEvent(type = "keyUp", key = key,
+                                 windowsVirtualKeyCode = code)
+}
+
 badge_text <- function(app) {
   app$get_js("document.querySelector('.unsaved-badge').textContent")
 }

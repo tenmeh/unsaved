@@ -112,12 +112,19 @@
         var owner = Object.keys(states).find(function (key) { return markerIds(states[key]).indexOf(id) !== -1; });
         text.textContent = states[owner].text.unsaved;
         (output ? label : container).appendChild(text);
+        if (el.matches('.shiny-input-radiogroup, .shiny-input-checkboxgroup')) {
+          el.setAttribute("role", "group");
+          if (!label.id) label.id = "unsaved-label-" + (++serial);
+          el.setAttribute("aria-labelledby", label.id);
+        }
         el.setAttribute("aria-describedby", ((el.getAttribute("aria-describedby") || "") + " " + text.id).trim());
         marks.set(id, {el: el, container: container, label: label, text: text, output: output});
       }
     });
     document.querySelectorAll(".unsaved-badge").forEach(function (badge) {
-      badge.textContent = changed.size ? (badge.getAttribute("data-unsaved-label") || "{n} unsaved change{s}")
+      var template = badge.getAttribute(changed.size === 1 ? "data-unsaved-one" : "data-unsaved-other") ||
+        badge.getAttribute("data-unsaved-label") || "{n} unsaved change{s}";
+      badge.textContent = changed.size ? template
         .replace(/\{n\}/g, changed.size).replace(/\{s\}/g, changed.size === 1 ? "" : "s") : "";
     });
     var active = Object.keys(states).some(function (id) {
@@ -188,7 +195,8 @@
     if (dialog.waiting && cancel !== false) return;
     if (cancel !== false) confirmReply("keep");
     var target = dialog.target || dialog.previousFocus;
-    dialog.backdrop.remove();
+    dialog.panel.close();
+    dialog.panel.remove();
     dialog = null;
     if (target && target.isConnected) target.focus();
   }
@@ -214,7 +222,7 @@
       dialog.waiting = false;
       dialog.keep.disabled = false;
       dialog.discard.disabled = false;
-      dialog.save.disabled = dialog.reason && !dialog.reason.value.trim();
+      dialog.save.disabled = false;
       if (dialog.reason) dialog.reason.disabled = false;
       dialog.save.textContent = dialog.reasonOnly ? dialog.text.reason_save : dialog.text.save;
       dialog.alert.textContent = dialog.text.save_failed;
@@ -255,9 +263,7 @@
     var text = (confirmation && confirmation.text) || states[instances[0]].text;
     var reasonOnly = confirmation && confirmation.reasonOnly;
     var needsReason = reasonOnly || instances.some(function (id) { return states[id].requireReason; });
-    var backdrop = document.createElement("div");
-    backdrop.className = "unsaved-backdrop";
-    var panel = document.createElement("div");
+    var panel = document.createElement("dialog");
     panel.className = "unsaved-dialog";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
@@ -272,13 +278,15 @@
       });
     });
     var message = document.createElement("p");
+    message.id = "unsaved-dialog-message-" + (++serial);
+    panel.setAttribute("aria-describedby", message.id);
     message.textContent = text.message.replace(/\{n\}/g, count.size).replace(/\{s\}/g, count.size === 1 ? "" : "s");
     var keep = document.createElement("button");
     var discard = document.createElement("button");
     keep.type = "button";
     discard.type = "button";
-    keep.className = "btn btn-secondary";
-    discard.className = "btn btn-danger";
+    keep.className = "unsaved-keep btn btn-secondary btn-default";
+    discard.className = "btn btn-outline-danger";
     keep.textContent = reasonOnly ? text.reason_cancel : text.keep;
     discard.textContent = text.discard;
     keep.addEventListener("click", closeDialog);
@@ -297,10 +305,14 @@
     // The buttons sit in one row that wraps as a whole on narrow screens.
     var actions = document.createElement("div");
     actions.className = "unsaved-dialog-actions";
-    actions.appendChild(keep);
     if (!reasonOnly) actions.appendChild(discard);
+    actions.appendChild(keep);
     panel.appendChild(title);
-    if (!reasonOnly) panel.appendChild(message);
+    if (reasonOnly) {
+      message.textContent = text.reason;
+      message.hidden = true;
+    }
+    panel.appendChild(message);
     var reason = null;
     var counter = null;
     if (needsReason) {
@@ -312,20 +324,32 @@
       label.htmlFor = reason.id;
       label.textContent = text.reason;
       counter = document.createElement("p");
-      counter.className = "unsaved-reason-count";
+      counter.className = "unsaved-reason-count form-text small";
       counter.id = reason.id + "-count";
-      counter.textContent = "0 / 1000";
-      reason.setAttribute("aria-describedby", counter.id);
+      var countText = function (n) {
+        return text.reason_count.replace(/\{n\}/g, n).replace(/\{max\}/g, 1000);
+      };
+      counter.textContent = countText(0);
+      var missing = document.createElement("p");
+      missing.id = reason.id + "-error";
+      missing.className = "unsaved-reason-error text-danger";
+      reason.setAttribute("aria-describedby", counter.id + " " + missing.id);
       reason.addEventListener("input", function () {
-        reason.value = Array.from(reason.value).slice(0, 1000).join("");
-        counter.textContent = Array.from(reason.value).length + " / 1000";
-        if (save) save.disabled = !reason.value.trim();
+        var characters = Array.from(reason.value);
+        if (characters.length > 1000) {
+          reason.value = characters.slice(0, 1000).join("");
+          var cutText = text.reason_cut.replace(/\{max\}/g, 1000);
+          if (alert.textContent !== cutText) alert.textContent = cutText;
+        }
+        counter.textContent = countText(Array.from(reason.value).length);
+        if (reason.value.trim()) {
+          reason.removeAttribute("aria-invalid");
+          missing.textContent = "";
+        }
       });
-      panel.append(label, reason, counter);
+      panel.append(label, reason, counter, missing);
     }
     panel.appendChild(actions);
-    var buttons = reasonOnly ? [keep] : [keep, discard];
-    if (reason) buttons.unshift(reason);
     var save = null;
     var alert = document.createElement("div");
     alert.setAttribute("role", "alert");
@@ -334,11 +358,15 @@
       save.type = "button";
       save.className = "btn btn-primary";
       save.textContent = reasonOnly ? text.reason_save : text.save;
-      save.disabled = !!needsReason;
       save.addEventListener("click", function () {
         if (!dialog || dialog.waiting) return;
         var reasonText = reason ? Array.from(reason.value.trim()).slice(0, 1000).join("") : undefined;
-        if (needsReason && !reasonText) return;
+        if (needsReason && !reasonText) {
+          reason.setAttribute("aria-invalid", "true");
+          missing.textContent = text.reason_missing;
+          reason.focus();
+          return;
+        }
         if (reasonOnly && !dialog.saveMode) {
           confirmReply("save", reasonText);
           closeDialog(false);
@@ -367,32 +395,23 @@
         });
       });
       actions.appendChild(save);
-      buttons.push(save);
+    } else {
+      keep.className = "unsaved-keep btn btn-primary";
     }
     panel.appendChild(alert);
-    backdrop.appendChild(panel);
-    backdrop.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeDialog();
-      }
-      if (e.key === "Tab") {
-        e.preventDefault();
-        var enabled = buttons.filter(function (button) { return !button.disabled; });
-        if (!enabled.length) return;
-        var index = enabled.indexOf(document.activeElement);
-        var next = (index + (e.shiftKey ? -1 : 1) + enabled.length) % enabled.length;
-        enabled[next].focus();
-      }
+    panel.addEventListener("cancel", function (e) {
+      e.preventDefault();
+      closeDialog();
     });
-    document.body.appendChild(backdrop);
+    document.body.appendChild(panel);
     dialog = {
-      text: text, backdrop: backdrop, target: target, discard: discard, keep: keep, message: message,
+      text: text, panel: panel, target: target, discard: discard, keep: keep, message: message,
       save: save, alert: alert, waiting: false, confirmation: confirmation,
       reason: reason, reasonOnly: reasonOnly,
       saveMode: confirmation && confirmation.saveMode,
       previousFocus: previousFocus, instances: instances
     };
+    panel.showModal();
     keep.focus();
   }
 

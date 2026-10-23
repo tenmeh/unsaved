@@ -60,9 +60,12 @@ server <- function(input, output, session) {
             batches(current)
             audit(next_audit)
             saving(FALSE)
+            # later() runs outside the session, so name it.
+            showNotification(tagList("Saved. ", actionLink("view_audit", "View the audit trail")),
+                             session = session)
             resolve(TRUE)
           }, error = function(error) {
-            message("Review save failed; edits remain unsaved.")
+            message("Review save failed; edits remain unsaved: ", conditionMessage(error))
             saving(FALSE)
             reject(error)
           })
@@ -120,6 +123,11 @@ server <- function(input, output, session) {
       updateTextAreaInput(session, "note", value = record$note)
     })
   })
+  observeEvent(input$view_audit, nav_select("tabs", "audit", session = session))
+  observe({
+    session$sendCustomMessage("review-save", tracker$is_dirty() && !tracker$is_saving())
+  })
+  output$edited <- renderText(if ("Results" %in% tracker$changed()) "Edited" else "")
   output$batch_heading <- renderText(paste("Results for", active_batch()))
   output$save_state <- renderText({
     if (saving()) return("Saving...")
