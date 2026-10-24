@@ -1,0 +1,144 @@
+---
+title: "Saving: sync, async, reasons and audit trails"
+output: rmarkdown::html_document
+---
+
+For app authors who need background saves or a reason for change.
+The app owns storage and the audit trail.
+
+## The save callback
+
+Give `unsaved_track()` an `on_save` function to add a **Save and continue** button
+to the dialog:
+
+```{r, eval = FALSE}
+tracker <- unsaved_track(c("name", "age"), on_save = function() {
+  save_record(input$name, input$age)  # your own save code
+  TRUE
+})
+```
+
+- `on_save()` must return exactly `TRUE`, or a promise that resolves to exactly
+  `TRUE`, before the tracker marks values saved and permits navigation.
+- If `on_save()` stops with an error or returns `FALSE`, the user stays on the
+  tab, keeps their changes, and sees "Could not save. Your changes are still
+  here." The error message goes to a server warning, not to the browser.
+- Saving needs a round trip to the server, so the dialog waits while the server
+  is busy. Discarding does not wait.
+- Other results, including NULL, NA, a number or an `ExtendedTask`, fail the
+  save and raise one server warning.
+- **Keep editing** cancels before saving starts. It is disabled while saving.
+
+For saves across trackers, see [Modules and navigation](modules-navigation.html).
+
+## Promises and snapshots
+
+For asynchronous saving, read inputs before starting the worker and return
+the promise. Configure a future worker plan when the app starts.
+
+```{r, eval = FALSE}
+tracker <- unsaved_track("name", on_save = function() {
+  name <- input$name
+  promises::future_promise({
+    save_record(name)
+    TRUE
+  })
+})
+```
+
+The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
+taken when the save starts, so edits made during the save stay unsaved.
+If edits remain, Save and continue keeps the dialog open and shows `save_incomplete`.
+A promise that never settles keeps `is_saving()` TRUE and the dialog waiting.
+Arrange a timeout or rejection in your app. `destroy()` clears the flag but
+does not cancel the save work.
+A promise that resolves to `FALSE` or any other value, or rejects, keeps the
+baseline and raises one server warning. Rejection messages stay on the server.
+Only one save per tracker can be pending; another request is ignored with a
+warning. The dialog shows "Saving..." until the reply. Escape and Keep editing
+are disabled while saving. Return the promise, not an `ExtendedTask`; use
+`promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
+
+## Save errors
+
+Log errors inside your app's `on_save`, then return `FALSE`. The browser only
+sees the generic message "Could not save. Your changes are still here. Try again or keep editing."
+
+```{r, eval = FALSE}
+tracker <- unsaved_track(c("name", "age"), on_save = function() {
+  tryCatch({
+    save_record(input$name, input$age)
+    TRUE
+  }, error = function(error) {
+    message("Save failed: ", conditionMessage(error))  # server log
+    FALSE
+  })
+})
+```
+
+Use your app's logger in place of `message()` if needed. After correcting the
+problem, the user can select Save and continue again to retry.
+
+## Reason for change and audit trails
+
+Set `require_reason = TRUE` to require a reason for Save and continue and `save()`.
+`on_save` must then take exactly one argument named `reason`. With the default
+`require_reason = FALSE`, it must take no arguments.
+
+The following server example appends changes to an in-memory audit table.
+Replace this store with your app's persistent audit table, and write the
+record and audit entry in one transaction. `authenticated_user()` must return
+the user id from your app's authentication system.
+
+```{r, eval = FALSE}
+audit <- reactiveVal(data.frame())
+save_with_reason <- function(reason) {
+  changes <- tracker$diff()
+  changes$reason <- rep(reason, nrow(changes))
+  changes$user <- rep(authenticated_user(), nrow(changes))
+  changes$timestamp <- rep(Sys.time(), nrow(changes))
+  save_record(input$name)  # your app's storage function
+  audit(rbind(audit(), changes))
+  TRUE
+}
+tracker <- unsaved_track(
+  "name", on_save = function(reason) save_with_reason(reason),
+  require_reason = TRUE
+)
+observeEvent(input$save, tracker$save())
+```
+
+`tracker$save()` uses the registered `on_save`, with a reason dialog when required.
+It does nothing when clean, warns while pending, and errors without `on_save`.
+The reason dialog waits for completion and shows `save_failed` on failure.
+Without a dialog, failures warn on the server. `is_saving()` is reactive.
+It is TRUE from the start of a save until the save settles, for both
+`save()` and Save and continue. A successful standalone reason save closes
+its dialog even if newer edits remain. Those edits stay dirty.
+
+The package does not store the audit trail; the app does. Capture `diff()`
+before marking the values saved. This feature supplies a reason to your
+app's audit code; it does not implement a regulatory compliance system.
+
+The dialog has a required text area labelled "Reason for change (required)".
+Save stays enabled. An empty reason shows an inline error and focuses the field.
+Reasons are trimmed and cut to at most 1000 characters. The counter and cut
+announcement use `reason_count` and `reason_cut`; the error uses `reason_missing`.
+Reasons go only to the server and are never logged by the package. Callback errors use generic
+package warnings when a reason is involved; handle diagnostics in your app
+without exposing the reason.
+
+`tracker$ask_reason(action)` always asks, even when clean or paused, and also
+works with `require_reason = FALSE`. Its button labels come from
+`unsaved_text(reason_cancel = "Keep editing", reason_save = "Save")`.
+Cancel does nothing; Save calls `action(reason)` once. The action saves and
+calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
+pending per tracker; a second request warns and is dropped.
+
+Customise the label and the reason-only heading with
+`unsaved_text(reason = "Reason for change (required)",`
+`reason_title = "Why are you making this change?")`.
+See [Modules and navigation](modules-navigation.html) for shared dialogs.
+
+For a complete form, see [Get started](get-started.html).
+For table changes, see [Server values and tables](server-values.html).

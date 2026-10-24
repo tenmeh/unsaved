@@ -3,6 +3,8 @@ title: "Live demo"
 output: rmarkdown::html_document
 ---
 
+For readers who want to try the package before writing an app.
+
 These showcase apps of `unsaved` run in your browser. There is no
 server: [shinylive](https://posit-dev.github.io/r-shinylive/) runs R and
 Shiny in the page with webR. Records stay in memory for this session only.
@@ -14,9 +16,12 @@ The table, status and note share one tracker; the app stores the audit trail.
 
 Things to try:
 
-* Double-click a result value and change it. Watch the table marker and badge.
+* Double-click a result value and change it, then click outside the cell.
+  Watch the Edited caption, table outline and badge.
 * Set **Review status** and write a **Review note**, then click **Save review**.
-  Enter a reason and save. Open **Audit trail** to see one row per changed field.
+  Try Save with an empty reason to see the inline error. Enter a reason and
+  click **Save**. Follow **View the audit trail** in the notification to see
+  the app's field and cell audit rows.
 * Edit again and click **Changes**. Choose **Keep editing** or **Save and continue**.
   Save and continue asks for a reason and shows **Saving...** during the short delay.
 * Try **Discard changes**, or select another batch and click **Load batch**.
@@ -33,7 +38,7 @@ Things to try:
 
 To run the review app on your own machine:
 
-```r
+```{r, eval = FALSE}
 shiny::runApp(system.file("examples/review", package = "unsaved"))
 ```
 
@@ -60,6 +65,6 @@ Things to try:
 
 To run the same demo on your own machine:
 
-```r
+```{r, eval = FALSE}
 shiny::runApp(system.file("examples/demo", package = "unsaved"))
 ```

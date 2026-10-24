@@ -1,0 +1,136 @@
+---
+title: "Modules and navigation"
+output: rmarkdown::html_document
+---
+
+For apps with modules, several editors or more than one navigation path.
+Start with [Get started](get-started.html) for a single form.
+
+## The navigation guard
+
+While there are unsaved changes, the guard stops every tab change: a click, the
+arrow keys, and `updateTabsetPanel()` from the server. To move tabs from the
+server while dirty, acknowledge a completed save, call `discard()` and wait
+for restored inputs, or call `pause()` first. Use
+`guard_nav = FALSE` to turn the guard off.
+
+For a multi-step form, allow movement between steps and confirm at the real
+exit points:
+
+```{r, eval = FALSE}
+tracker <- unsaved_track(c("name", "age"), guard_nav = FALSE)
+# In the UI: unsaved_guard(actionButton("exit", "Exit form"))
+observeEvent(input$exit, updateTabsetPanel(session, "pages", "home"))
+```
+
+`unsaved_guard()` guards exit buttons and links with `guard_clicks = TRUE`,
+which is the default even when `guard_nav = FALSE`. Use `tracker$confirm()`
+for server actions. Tagged tabs always follow `guard_nav`.
+
+Each blocked change also sets the input `unsaved_nav_blocked`, so your app can
+react to it. Inside a module this input uses the module's namespace.
+
+## Guard buttons and links
+
+For a click in the browser, `unsaved_guard()` adds `data-unsaved-guard`:
+
+```{r, eval = FALSE}
+unsaved_guard(actionButton("delete", "Delete draft"))
+unsaved_guard(tags$a(href = "/another-page", "Another page"))
+```
+
+You can also add the attribute yourself, including on a modal close button.
+Dirty trackers with `guard_clicks = TRUE` block the click. Discard or a successful
+save replays it once. Keep editing cancels it. Server confirmation works
+independently of `guard_nav`.
+
+## Editing inside a modal
+
+Keep `guard_clicks = TRUE` and guard the explicit close button. This server
+recipe tracks a text field created inside the modal:
+
+```{r, eval = FALSE}
+tracker <- unsaved_track("modal_name")
+observeEvent(input$edit, {
+  showModal(modalDialog(
+    textInput("modal_name", "Name", "Ada"),
+    easyClose = FALSE,
+    footer = unsaved_guard(actionButton("close_editor", "Close"))
+  ))
+})
+observeEvent(input$close_editor, removeModal())
+```
+
+With edits pending, Close asks before discarding them. Escape and backdrop
+clicks are not guarded otherwise, so use `modalDialog(easyClose = FALSE)`.
+The guard does not intercept a server call to `removeModal()`; confirm other
+server actions before they remove the modal. Add `on_save` and your app's save
+code if the dialog should also offer Save and continue.
+
+## Modules
+
+For a module-local count, use a custom output. The built-in badge shows the
+page total. Each module can use this pattern:
+
+```{r, eval = FALSE}
+editor_ui <- function(id) {
+  ns <- NS(id)
+  tagList(textInput(ns("name"), "Name"), textOutput(ns("count")))
+}
+editor_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    tracker <- unsaved_track("name")
+    output$count <- renderText(paste(tracker$count(), "changed fields"))
+    tracker
+  })
+}
+```
+
+Create the tracker inside `moduleServer()` with local input ids. Do not
+prefix them with `session$ns()`. Save, discard and event inputs use that
+module's namespace. For page totals and shared guards, see below.
+
+## Use with rewind
+
+`rewind` is an optional package for undo and redo:
+
+```{r, eval = FALSE}
+rewind::rewind_enable(inputs = "name")
+tracker <- unsaved_track("name")
+observeEvent(input$undo, rewind::rewind_undo())
+observeEvent(input$redo, rewind::rewind_redo())
+```
+
+Undoing to saved values clears dirty state. Redo makes the form dirty again.
+Discard is a normal edit, so rewind can undo it. For text, slow typing makes
+several history steps; `updateOn = "blur"` gives one per edit. Ctrl+Z inside
+a text box uses the browser's own undo, so use rewind's controls or API.
+
+## Several trackers
+
+Navigation guards cover the whole page. Each badge counts distinct changed
+fields across all active trackers, including modules. Paused trackers do not
+contribute. For a module count, use the custom output above.
+
+A shared dialog uses the first involved tracker's text. Save and continue
+appears only if every involved dirty tracker has `on_save`. Each tracker
+saves on its own. One can succeed while another fails; nothing is rolled
+back. Use one tracker and one save for fields that must save together.
+If any involved tracker requires a reason, the shared dialog asks for one.
+It passes that reason to each callback that requires it.
+See [Saving](saving.html) for callback rules.
+
+## Pause or stop tracking
+
+`pause()` hides markers and badge counts and disables the guards.
+The baseline stays in place. Queries still report real differences.
+`resume()` restores the markers, counts and guards against that baseline.
+Explicit `confirm()` still asks when a paused tracker is dirty.
+
+`destroy()` stops tracking and removes the markers, counts and guards.
+It cancels a pending confirmation and clears the saving flag, but does not
+cancel save work. Repeated calls are safe. Commands do nothing after it.
+Destruction runs on session end and on module destruction where Shiny
+supports it.
+
+See [Get started](get-started.html) for `confirm()` and record loading.

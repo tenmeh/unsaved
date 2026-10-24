@@ -164,102 +164,38 @@ supported by Shiny. Returns invisible self.
 
 \section{Loading a record}{
 
-Set the saved baseline before sending input updates. Here \code{records()} holds
-saved records with the tracked fields \code{name} and \code{location}:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{observeEvent(input$load, \{
-  record_id <- input$record
-  tracker$confirm(function() \{
-    record <- records()[[record_id]]
-    tracker$load_baseline(values = record)
-    updateTextInput(session, "name", value = record$name)
-    updateTextInput(session, "location", value = record$location)
-  \})
-\})
-}\if{html}{\out{</div>}}
-
-\code{values} is a named list keyed by tracked input id. Omitted ids use their
-current input values. Unknown ids are errors; password ids are ignored.
-File values can be saved on the server but are never sent to the browser.
-With no argument, \code{mark_saved()} still captures current input values.
-
-The browser receives a clean state immediately. Until the updated values
-return, server comparisons can briefly report the old inputs as dirty.
-The next server comparison decides the state; matching echoes leave it clean.
-Supply values with the types returned by each input binding. Use \code{confirm()}
-before replacing edits, as above.
-
-The pause, update, wait for every echo, \code{mark_saved()}, resume pattern is still
-useful when the final values are not known in advance, or updates span several
-round trips. Disable editing and saving while that load is pending. Paused
-queries still report real differences; \code{is_paused()} can show a loading state.
+Call load_baseline(values) before sending input updates. Use confirm()
+before replacing edits. See the
+\href{https://tenmeh.github.io/unsaved/articles/get-started.html}{tutorial}.
 }
 
 \section{Discard requests}{
 
-discard() sends a request to the browser; it does not synchronously restore
-inputs or undo writes to storage. In on_discard, read the saved snapshot:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{on_discard = function() \{
-  saved_values <- tracker$baseline()
-  # Use this snapshot, not the not-yet-restored input values.
-\}
-}\if{html}{\out{</div>}}
-
-Server values cannot be restored by the package. Restoring each reactiveVal
-from tracker$baseline() in on_discard is the app's job. mark_saved() snapshots
-server values too; mark_saved(values = list(Visits = saved_table)) overlays
-their saved values by id. diff() lists input changes then server value changes.
+discard() requests browser restoration without waiting for input echoes.
+Read baseline() in on_discard. The app restores server values; see
+\href{https://tenmeh.github.io/unsaved/articles/server-values.html}{Server values and tables}.
 }
 
 \section{Reason for change and audit trails}{
 
-With require_reason = TRUE, Save and continue requires non-blank text labelled
-by unsaved_text(reason = "Reason for change (required)"). ask_reason() uses reason_title
-for its heading. Both trim the reason, limit it to 1000 characters and show
-a counter. The reason goes only to the server; the package never logs it.
-Record tracker$diff(), reason, the authenticated user and a timestamp in your
-on_save callback before returning TRUE. The package does not store the audit
-trail; the app does. Use a transaction for the record and audit writes.
+require_reason supplies a reason to on_save. The app stores the audit trail.
+See \href{https://tenmeh.github.io/unsaved/articles/saving.html}{Saving}
+for reasons, ask_reason() and an audit example.
 }
 
 \section{Save errors}{
 
-The app must log errors inside on_save(), then return FALSE. The browser
-only sees the generic save failure message. For example:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{on_save <- function() \{
-  tryCatch(\{
-    save_record(input$name)
-    TRUE
-  \}, error = function(error) \{
-    message("Save failed: ", conditionMessage(error))
-    FALSE
-  \})
-\}
-}\if{html}{\out{</div>}}
-
-Replace message() with your app's logger if needed. After correcting the
-problem, select Save and continue again to retry.
+Log diagnostics in on_save and return FALSE on failure. The browser shows
+a generic failure message. See
+\href{https://tenmeh.github.io/unsaved/articles/saving.html}{Saving}
+for retries and promises.
 }
 
 \section{Limits}{
 
-For cached, restorable inputs, the close-tab warning is armed as soon as the
-browser reports a changed value, even while the server is busy. Paused trackers
-and \code{guard_unload = FALSE} are excluded. Markers, badges, tab and click guards
-still follow the server. The browser uses JSON equality; the next server state
-wins, including custom comparisons. Password and file inputs have no
-provisional protection.
-Browser close warnings may be suppressed.
-
-discard() restores saved values through supported Shiny bindings. It is
-tested with text, text area and numeric inputs; radio buttons, checkboxes
-and checkbox groups; select inputs with the default selectize binding;
-date inputs and ranges; numeric sliders and ranges; date sliders and ranges;
-and date-time sliders. It cannot restore file uploads, password fields or
-inputs without a Shiny binding. Missing elements are skipped. It does not
-undo app-side writes to storage.
+Browser close warnings can be suppressed. Restoration depends on the
+input binding and does not undo storage writes. See
+\href{https://tenmeh.github.io/unsaved/articles/limits.html}{Limits and browser behaviour}.
 }
 
 \examples{
