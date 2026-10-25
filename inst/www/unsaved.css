@@ -1,24 +1,23 @@
 /* Use the field's colour, with a text equivalent for assistive technology. */
-[data-unsaved="true"] .unsaved-marker::after,
-[data-unsaved="true"].unsaved-marker::after {
+:where([data-unsaved="true"] .unsaved-marker,
+       [data-unsaved="true"].unsaved-marker)::after {
   content: "";
   display: inline-block;
-  width: .45em;
-  height: .45em;
+  width: var(--unsaved-dot-size, .5em);
+  height: var(--unsaved-dot-size, .5em);
   margin-left: .5em;
   border-radius: 50%;
-  background: currentColor;
+  background: var(--unsaved-color, var(--bs-primary, currentColor));
   vertical-align: middle;
 }
 /* A changed output, such as an edited table, is outlined instead of dotted. */
-.shiny-bound-output[data-unsaved="true"],
-.html-widget-output[data-unsaved="true"] {
-  outline: 2px solid currentColor;
+:where(.shiny-bound-output[data-unsaved="true"],
+       .html-widget-output[data-unsaved="true"]) {
+  outline: var(--unsaved-outline, 2px dashed var(--unsaved-color, var(--bs-primary, currentColor)));
   outline-offset: .25rem;
   border-radius: .25rem;
 }
-.unsaved-sr,
-.unsaved-output-marker {
+:where(.unsaved-sr, .unsaved-output-marker) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -29,29 +28,36 @@
   white-space: nowrap;
   border: 0;
 }
-.unsaved-badge { font-weight: 600; }
-.unsaved-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(0 0 0 / 45%);
-}
-.unsaved-dialog {
+:where(.unsaved-badge) { font-weight: 600; }
+/* --- Native modal dialog -------------------------------------------------- */
+:where(.unsaved-dialog)::backdrop { background: rgb(0 0 0 / 45%); }
+:where(.unsaved-dialog) {
   background: var(--bs-body-bg, white);
   color: var(--bs-body-color, #222);
+  border: 1px solid var(--bs-border-color-translucent, rgb(0 0 0 / 18%));
+  box-shadow: var(--bs-box-shadow-lg, 0 1rem 3rem rgb(0 0 0 / 18%));
   border-radius: .5rem;
   padding: 1.5rem;
-  width: min(34rem, 92vw);
+  /* Wide enough for the three buttons on one row. */
+  width: min(40rem, 92vw);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
 }
-.unsaved-dialog h2 { margin-top: 0; font-size: 1.5rem; }
-.unsaved-dialog-actions {
+:where(.unsaved-dialog h2) { margin-top: 0; font-size: 1.5rem; }
+:where(.unsaved-dialog-actions) {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: .5rem;
   margin-top: 1rem;
 }
-.unsaved-dialog-actions button { padding: .4rem .75rem; }
-.unsaved-dialog [role="alert"]:not(:empty) { margin-top: .75rem; }
+/* Wrap whole buttons, not their labels. */
+:where(.unsaved-dialog-actions button) { padding: .4rem .75rem; white-space: nowrap; }
+:where(.unsaved-dialog-actions .btn-outline-danger) { margin-right: auto; }
+:where(.unsaved-dialog [role="alert"]:not(:empty)) { margin-top: .75rem; }
+
+/* --- Narrow screens: primary action first ---------------------------------- */
+@media (max-width: 400px) {
+  :where(.unsaved-dialog-actions) { flex-direction: column-reverse; }
+  :where(.unsaved-dialog-actions button) { width: 100%; }
+}

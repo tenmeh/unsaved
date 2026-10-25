@@ -1,0 +1,90 @@
+---
+title: "Limits and browser behaviour"
+output: rmarkdown::html_document
+---
+
+For app authors checking browser limits, supported input bindings, theming
+and accessibility before release.
+
+## Limits
+
+- For cached, restorable inputs, the close-tab warning is armed as soon as the
+  browser reports a changed value, even while the server is busy. Paused trackers
+  and `guard_unload = FALSE` are excluded. Markers, badges, tab and click guards
+  still follow the server. The browser uses JSON equality; the next server state
+  wins, including custom comparisons. Password and file inputs have no
+  provisional protection.
+- Browsers show their own close or refresh warning, ignore any custom text, and
+  may not show it at all if the user has not used the page. Treat it as a
+  courtesy, not a guarantee.
+- If your app calls `updateTextInput(label = )` or similar, the field marker
+  disappears until the next change.
+- `discard()` sends the saved values to the browser as JSON. Unusual R objects
+  may not come back exactly. A file input cannot get its file back.
+- An input inside a `renderUI()` that has not rendered yet is not tracked until
+  it appears.
+
+## Restoring inputs
+
+Restoration is tested with these Shiny inputs:
+
+- Text and text area inputs, and numeric inputs.
+- Radio buttons, checkboxes and checkbox groups.
+- Select inputs with the default selectize binding.
+- Date inputs and date ranges.
+- Numeric sliders and ranges, date sliders and ranges, and date-time sliders.
+
+`discard()` cannot restore file uploads, password fields or inputs without
+a Shiny binding. Missing elements are skipped. Password fields are not tracked.
+Discard does not undo writes your app has already made to storage.
+
+## For CSS
+
+These names are stable, so you can style them:
+
+| Selector | What it is |
+|---|---|
+| `[data-unsaved="true"]` | The container of a changed input |
+| `.unsaved-sr` | The hidden "Unsaved change" text for screen readers |
+| `.unsaved-badge` | The badge |
+| `.unsaved-dialog` | The dialog panel |
+| `.unsaved-dialog::backdrop` | The native modal backdrop |
+
+| Custom property | Default |
+|---|---|
+| `--unsaved-color` | `var(--bs-primary, currentColor)` |
+| `--unsaved-dot-size` | `.5em` |
+| `--unsaved-outline` | `2px dashed var(--unsaved-color)` |
+
+Set these properties on an ancestor or the changed element. Custom marker and
+outline colours must have at least 3:1 contrast against the adjacent background.
+Rules use `:where()` so app styles can override them. Changed outputs have a
+dashed outline. Native modal dialogs keep the page behind inert and return focus
+to the opener when closed. Escape keeps editing, except while saving.
+
+`unsaved_badge(label = c(one = "One edit", other = "{n} edits"))` selects
+`one` for a count of one and `other` for larger counts. A single template
+still accepts `{n}` and `{s}`. The default class is `badge text-bg-warning`;
+set `class` to customise it and `live = FALSE` to omit the live region.
+
+## Accessibility and text
+
+The dialog uses a native modal `dialog` element. Its title and message are
+linked for screen readers. Keyboard focus stays in the dialog while it is
+open. Buttons stack on narrow screens. Changed fields have hidden
+"Unsaved change" text as well as a marker. Radio and checkbox groups receive
+a group description or a description on their first input.
+
+Use `unsaved_text()` to change dialog titles, messages and button labels.
+The message accepts `{n}` and `{s}`. See [Saving](saving.html) for reason
+validation and its screen-reader messages.
+
+Password fields are never tracked. Once reported, a password id stays
+excluded for the life of the tracker, even if its widget is removed.
+File values can enter a server baseline but never a browser snapshot.
+Action buttons, tab selections and the package's own inputs are excluded.
+Removed inputs are ignored; returning inputs use their retained baseline.
+
+The package cannot recover a lost session or resolve conflicts between users.
+See [Get started](get-started.html) for discard requests and
+[Server values and tables](server-values.html) for restoring server values.

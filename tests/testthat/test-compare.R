@@ -132,3 +132,12 @@ test_that("table structure changes retain table summaries", {
   expect_equal(format_change(saved, saved[, c("flag", "value")]),
                "a table of 2 rows -> a table of 2 rows")
 })
+
+test_that("table scans handle missing infinite and near-zero numeric cells", {
+  saved <- data.frame(x = c(NA, NaN, Inf, -Inf, 0, 1e-8, 1, 1))
+  current <- data.frame(x = c(1, NA, Inf, Inf, 1e-9, 2e-8, 1 + 1e-10, 2))
+  expect_equal(format_change(saved, current),
+               "row 1, x: NA -> 1; row 4, x: -Inf -> Inf; row 8, x: 1 -> 2")
+  expect_equal(format_change(data.frame(x = 1), data.frame(x = "1")), "row 1, x: 1 -> 1")
+  expect_equal(format_change(data.frame(x = TRUE), data.frame(x = 1)), "row 1, x: TRUE -> 1")
+})

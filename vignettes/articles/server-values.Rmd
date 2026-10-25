@@ -1,0 +1,95 @@
+---
+title: "Server values and tables"
+output: rmarkdown::html_document
+---
+
+For app authors who keep edited tables or other values on the server.
+This guide assumes you already have a form tracker.
+
+## Track an edited table on the server
+
+DT and rhandsontable send edit events, not a complete saved table. Keep the
+edited table in a reactiveVal and give that reactive to `values`. This DT
+example belongs inside the app's server function; the UI needs
+`DT::DTOutput("visits_table")` and Save and Discard action buttons.
+
+```{r, eval = FALSE}
+table_rv <- reactiveVal(data.frame(visit = 1:3, score = c(2, 4, 6)))
+tracker <- unsaved_track(
+  inputs = character(),
+  values = list(Visits = table_rv),
+  value_outputs = c(Visits = "visits_table"),
+  on_save = function() {
+    save_visits(table_rv())  # your app's storage function
+    TRUE
+  },
+  on_discard = function() table_rv(tracker$baseline()$Visits)
+)
+output$visits_table <- DT::renderDT({
+  DT::datatable(table_rv(), editable = TRUE, rownames = FALSE,
+                selection = "none")
+}, server = TRUE)
+observeEvent(input$visits_table_cell_edit, {
+  table_rv(DT::editData(table_rv(), input$visits_table_cell_edit,
+                        rownames = FALSE))
+})
+observeEvent(input$save, tracker$save())
+observeEvent(input$discard, tracker$discard())
+```
+
+The list names are the value ids and labels. They must be unique and must
+not clash with input ids. Supply at least one input or value. A reactive
+expression also works: its first available result becomes the baseline.
+Data frames compare column by column, using the usual comparison rules;
+`compare = list(Visits = identical)` selects an exact comparison.
+
+Changed values appear in `is_dirty()`, `count()`, `changed()` and `diff()`,
+and count towards the badge. For example, a change summary can read
+"a table of 12 rows -> a table of 13 rows". `change` is display text; the
+`saved` and `current` list columns hold the evidence. A custom comparator can
+report "table changed" even when the cell scan finds no difference.
+Input changes appear first in `diff()`, followed by server values in list
+order. `value_outputs` is optional:
+with it, the mapped output is outlined while the value is changed; without it,
+the value has no marker. Use module-local output ids.
+
+`mark_saved()` snapshots server values too. To supply saved data explicitly,
+use `tracker$mark_saved(values = list(Visits = saved_table))`. The package
+never sends these values to the browser, even on discard. The table widget
+still renders the data that your app gives it. Restoring the reactiveVal is
+the app's job: `discard()` calls `on_discard`, which reads `tracker$baseline()`
+in the example. Without that callback, the edited server value stays dirty.
+
+## Read the change list
+
+Give inputs names to set labels, for example
+`unsaved_track(c("Full name" = "name"))`. Empty names use the id.
+`diff()` returns `name`, `label`, `change`, `saved` and `current`.
+A clean tracker returns those columns with no rows.
+
+For tables with the same column names and row count, `change` lists up to
+three changed cells in row order, then the number of remaining changed cells.
+Each cell has a row number, column name and saved/current text.
+If the shape changes, the summary describes the old and new tables.
+These are positional summaries, not a keyed cell audit log. The
+[review demo](live-demo.html#lab-result-review) builds its own cell audit rows.
+
+## Choose comparison rules
+
+`compare = NULL` uses the default comparison. Numeric values use
+`all.equal()` with relative tolerance `1e-8`, or absolute tolerance near zero.
+For exact amounts or ids, use `compare = list(amount = identical)`.
+A single comparison function applies to all tracked fields. A named list
+applies functions by input or value id. Other fields use the default.
+Each function takes saved and current values and returns one non-missing
+logical: `TRUE` means equal.
+
+`unsaved_compare_text()` trims outer whitespace and treats empty text as
+NULL. Set `trim = FALSE` or `empty_is_null = FALSE` to turn either rule off.
+
+```{r, eval = TRUE}
+equal_text <- unsaved::unsaved_compare_text()
+equal_text("Ada", " Ada ")
+```
+
+See [Saving](saving.html) for save callbacks and snapshot rules.

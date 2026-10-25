@@ -6,16 +6,16 @@
 \usage{
 unsaved_track(
   inputs = character(),
+  values = NULL,
+  value_outputs = NULL,
+  on_save = NULL,
+  require_reason = FALSE,
+  on_discard = NULL,
+  compare = NULL,
   guard_nav = TRUE,
   guard_unload = TRUE,
   guard_clicks = TRUE,
-  on_save = NULL,
-  on_discard = NULL,
-  compare = NULL,
   text = unsaved_text(),
-  values = NULL,
-  value_outputs = NULL,
-  require_reason = FALSE,
   session = shiny::getDefaultReactiveDomain()
 )
 }
@@ -24,15 +24,14 @@ unsaved_track(
 values are supplied. At least one input or value must be supplied.
 Optional names are field labels; an empty name uses the id.}
 
-\item{guard_nav}{Guard tab clicks, keyboard and programmatic tab navigation,
-including updateTabsetPanel(). To navigate while dirty, call mark_saved(),
-discard() (and wait for restored inputs), or pause() first.}
+\item{values}{NULL or a uniquely named list of reactive expressions or
+reactiveVals. Names are both ids and labels and must not clash with inputs.
+Their first results become the baseline. Data frames compare column by
+column. These values never enter browser snapshots.}
 
-\item{guard_unload}{Warn on browser close or refresh. Browsers use generic
-wording and may suppress the prompt without prior user interaction.}
-
-\item{guard_clicks}{Guard clicks on elements marked with unsaved_guard().
-Tagged tabs follow guard_nav instead.}
+\item{value_outputs}{NULL or a named character vector mapping value ids to
+output ids. The output is outlined while its value is changed. Use local ids in
+modules. Unmapped values count towards the badge but have no marker.}
 
 \item{on_save}{NULL or a function with no arguments (or one argument named
 reason when require_reason is TRUE). It must finish saving
@@ -40,6 +39,10 @@ before returning TRUE, or return a promise that resolves to exactly TRUE.
 FALSE, errors and other results fail the save. Failed promises raise one
 server warning. ExtendedTask results are unsupported; return the promise.
 Edits made while a promise is pending stay unsaved.}
+
+\item{require_reason}{Require a reason before Save and continue or save(). If TRUE,
+on_save must have exactly one argument named reason. Otherwise it takes
+no arguments. Reasons are trimmed and cut to 1000 characters.}
 
 \item{on_discard}{NULL or a function with no arguments, called after each
 discard request. Errors become warnings. Inputs may not yet be restored; use
@@ -51,21 +54,18 @@ saved and current values and return a single non-NA logical for equality.
 Numeric values use all.equal() with relative tolerance 1e-8 (absolute near
 zero). For exact amounts or ids, use \code{compare = list(amount = identical)}.}
 
+\item{guard_nav}{Guard tab clicks, keyboard and programmatic tab navigation,
+including updateTabsetPanel(). To navigate while dirty, call mark_saved(),
+discard() (and wait for restored inputs), or pause() first.}
+
+\item{guard_unload}{Warn on browser close or refresh. Browsers use generic
+wording and may suppress the prompt without prior user interaction.}
+
+\item{guard_clicks}{Guard clicks on elements marked with unsaved_guard().
+Tagged tabs follow guard_nav instead.}
+
 \item{text}{Text returned by unsaved_text(). A shared dialog uses the
 text of its first involved tracker.}
-
-\item{values}{NULL or a uniquely named list of reactive expressions or
-reactiveVals. Names are both ids and labels and must not clash with inputs.
-Their first results become the baseline. Data frames compare column by
-column. These values never enter browser snapshots.}
-
-\item{value_outputs}{NULL or a named character vector mapping value ids to
-output ids. The output is outlined while its value is changed. Use local ids in
-modules. Unmapped values count towards the badge but have no marker.}
-
-\item{require_reason}{Require a reason before Save and leave. If TRUE,
-on_save must have exactly one argument named reason. Otherwise it takes
-no arguments. Reasons are trimmed and cut to 1000 characters.}
 
 \item{session}{The current Shiny session.}
 }
@@ -87,7 +87,7 @@ Password fields are never tracked. Cached values wait for the client's
 password report, and a late report removes an input from the snapshot.
 A reported password id stays excluded for the life of the tracker,
 including after the widget is removed or its id is reused.
-Save and leave waits for a server round trip. Errors are caught without
+Save and continue waits for a server round trip. Errors are caught without
 sending their messages to the browser. Discard sends JSON, so exotic R
 objects may not round-trip. Use module-local ids inside moduleServer().
 
@@ -96,29 +96,44 @@ For a multi-step form, use \code{guard_nav = FALSE} and unsaved_guard() on
 real exit buttons and links. guard_clicks defaults to TRUE independently.
 Use \code{tracker$confirm()} for server actions.
 
-With several trackers, a shared Save and leave saves each one on its own.
+With several trackers, a shared Save and continue saves each one on its own.
 One can succeed while another fails; nothing is rolled back. Use one
 tracker and one save for fields that must save together. Return a promise
 for background work. Only one save per tracker can be pending; further
 requests are ignored with a warning.
+A promise that never settles keeps is_saving() TRUE and the dialog waiting.
+The app must arrange its own timeout or rejection. destroy() clears the
+pending flag but does not cancel the app's work. After success, navigation
+proceeds only if no edits remain; otherwise save_incomplete is shown.
 }
 \section{Methods}{
 
 Query methods read the real differences even while paused.
+Every command returns invisible self and does nothing after destroy().
 \itemize{
 \item \code{is_dirty()}: Reactive scalar logical: TRUE if values differ.
 \item \code{count()}: Reactive scalar integer: number of changed fields.
 \item \code{changed()}: Reactive character vector of changed local input and value ids.
 \item \code{diff()}: Reactive data frame in input then value order, with name, label,
 change, saved and current columns. The last two are list columns.
+change is display text; saved and current hold the evidence. A custom
+comparison can report "table changed" without individual changed cells.
 A clean tracker returns the same five columns with zero rows.
 \item \code{is_paused()}: Reactive scalar logical: TRUE while paused.
+\item \code{is_saving()}: Reactive scalar logical: TRUE until a save settles.
 \item \code{baseline()}: Non-reactive named list of saved values.
 \item \code{mark_saved(values = NULL)}: Non-reactive command. Uses current inputs and values
 as the baseline, or overlays a named list of saved values keyed by
 tracked input or value id. Omitted ids use current values. Unknown ids are
 errors; passwords are ignored. File values stay on the server.
-Publishes a clean browser state immediately. Returns invisible self.
+Publishes the real state; later edits stay dirty. Returns invisible self.
+\item \code{load_baseline(values)}: Loads a named list before input updates. Uses the
+same validation and overlay as mark_saved(), but publishes clean at once.
+The next comparison decides the state. Returns invisible self.
+\item \code{save()}: Runs on_save with a starting snapshot. Requires on_save. Does
+nothing when clean; warns if a save is pending. With require_reason,
+asks for a reason and waits in the dialog until saving finishes.
+Failure without a dialog warns. Returns invisible self.
 \item \code{discard()}: Non-reactive command. Requests that the browser
 restore saved values, then calls on_discard without waiting for the
 inputs to return. Returns invisible self.
@@ -128,10 +143,11 @@ Returns invisible self.
 \item \code{resume()}: Non-reactive command. Restores markers, badge
 counts and guards, comparing against the retained baseline.
 Returns invisible self.
-\item \code{confirm(action)}: Non-reactive command. Runs a function with
+\item \code{confirm(action, text = NULL)}: Non-reactive command. Runs a function with
 no arguments at once when clean. Paused dirty trackers still ask.
 Otherwise asks first, then runs it after discard or successful save.
-Keep editing cancels the action, but not a save already requested.
+text may be unsaved_text() for this dialog only. Action errors warn.
+Keep editing cancels before saving starts; it is disabled while saving.
 A second pending call warns and drops the new action.
 Returns invisible self, not the action result.
 \item \code{ask_reason(action)}: Non-reactive command. Always opens a reason-only
@@ -148,102 +164,38 @@ supported by Shiny. Returns invisible self.
 
 \section{Loading a record}{
 
-Set the saved baseline before sending input updates. Here \code{records()} holds
-saved records with the tracked fields \code{name} and \code{location}:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{observeEvent(input$load, \{
-  record_id <- input$record
-  tracker$confirm(function() \{
-    record <- records()[[record_id]]
-    tracker$mark_saved(values = record)
-    updateTextInput(session, "name", value = record$name)
-    updateTextInput(session, "location", value = record$location)
-  \})
-\})
-}\if{html}{\out{</div>}}
-
-\code{values} is a named list keyed by tracked input id. Omitted ids use their
-current input values. Unknown ids are errors; password ids are ignored.
-File values can be saved on the server but are never sent to the browser.
-With no argument, \code{mark_saved()} still captures current input values.
-
-The browser receives a clean state immediately. Until the updated values
-return, server comparisons can briefly report the old inputs as dirty.
-The next server comparison decides the state; matching echoes leave it clean.
-Supply values with the types returned by each input binding. Use \code{confirm()}
-before replacing edits, as above.
-
-The pause, update, wait for every echo, \code{mark_saved()}, resume pattern is still
-useful when the final values are not known in advance, or updates span several
-round trips. Disable editing and saving while that load is pending. Paused
-queries still report real differences; \code{is_paused()} can show a loading state.
+Call load_baseline(values) before sending input updates. Use confirm()
+before replacing edits. See the
+\href{https://tenmeh.github.io/unsaved/articles/get-started.html}{tutorial}.
 }
 
 \section{Discard requests}{
 
-discard() sends a request to the browser; it does not synchronously restore
-inputs or undo writes to storage. In on_discard, read the saved snapshot:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{on_discard = function() \{
-  saved_values <- tracker$baseline()
-  # Use this snapshot, not the not-yet-restored input values.
-\}
-}\if{html}{\out{</div>}}
-
-Server values cannot be restored by the package. Restoring each reactiveVal
-from tracker$baseline() in on_discard is the app's job. mark_saved() snapshots
-server values too; mark_saved(values = list(Visits = saved_table)) overlays
-their saved values by id. diff() lists input changes then server value changes.
+discard() requests browser restoration without waiting for input echoes.
+Read baseline() in on_discard. The app restores server values; see
+\href{https://tenmeh.github.io/unsaved/articles/server-values.html}{Server values and tables}.
 }
 
 \section{Reason for change and audit trails}{
 
-With require_reason = TRUE, Save and leave requires non-blank text labelled
-by unsaved_text(reason = "Reason for change"). ask_reason() uses reason_title
-for its heading. Both trim the reason, limit it to 1000 characters and show
-a counter. The reason goes only to the server; the package never logs it.
-Record tracker$diff(), reason, the authenticated user and a timestamp in your
-on_save callback before returning TRUE. The package does not store the audit
-trail; the app does. Use a transaction for the record and audit writes.
+require_reason supplies a reason to on_save. The app stores the audit trail.
+See \href{https://tenmeh.github.io/unsaved/articles/saving.html}{Saving}
+for reasons, ask_reason() and an audit example.
 }
 
 \section{Save errors}{
 
-The app must log errors inside on_save(), then return FALSE. The browser
-only sees the generic save failure message. For example:
-
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{on_save <- function() \{
-  tryCatch(\{
-    save_record(input$name)
-    TRUE
-  \}, error = function(error) \{
-    message("Save failed: ", conditionMessage(error))
-    FALSE
-  \})
-\}
-}\if{html}{\out{</div>}}
-
-Replace message() with your app's logger if needed. After correcting the
-problem, select Save and leave again to retry.
+Log diagnostics in on_save and return FALSE on failure. The browser shows
+a generic failure message. See
+\href{https://tenmeh.github.io/unsaved/articles/saving.html}{Saving}
+for retries and promises.
 }
 
 \section{Limits}{
 
-For cached, restorable inputs, the close-tab warning is armed as soon as the
-browser reports a changed value, even while the server is busy. Paused trackers
-and \code{guard_unload = FALSE} are excluded. Markers, badges, tab and click guards
-still follow the server. The browser uses JSON equality; the next server state
-wins, including custom comparisons. Password and file inputs have no
-provisional protection.
-Browser close warnings may be suppressed.
-
-discard() restores saved values through supported Shiny bindings. It is
-tested with text, text area and numeric inputs; radio buttons, checkboxes
-and checkbox groups; select inputs with the default selectize binding;
-date inputs and ranges; numeric sliders and ranges; date sliders and ranges;
-and date-time sliders. It cannot restore file uploads, password fields or
-inputs without a Shiny binding. Missing elements are skipped. It does not
-undo app-side writes to storage.
+Browser close warnings can be suppressed. Restoration depends on the
+input binding and does not undo storage writes. See
+\href{https://tenmeh.github.io/unsaved/articles/limits.html}{Limits and browser behaviour}.
 }
 
 \examples{

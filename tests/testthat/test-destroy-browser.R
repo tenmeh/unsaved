@@ -47,7 +47,7 @@ test_that("dynamic module destruction removes markers badge and guards", {
   app$run_js("document.querySelector('a[data-value=other]').click()")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
   expect_equal(app$get_value(input = "tabs"), "form")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-secondary').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .unsaved-keep').click()")
   app$click("editor-confirm")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
   app$run_js("

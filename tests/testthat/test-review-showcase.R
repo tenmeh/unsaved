@@ -1,4 +1,5 @@
 test_that("the review showcase saves audit rows and loads a batch baseline", {
+  skip_on_cran()
   for (package in c("DT", "bslib", "promises", "later")) skip_if_not_installed(package)
   withr::local_envvar(R_USER_CACHE_DIR = tempdir())
   env <- new.env(parent = globalenv())
@@ -26,7 +27,8 @@ test_that("the review showcase saves audit rows and loads a batch baseline", {
     session$setInputs(save = 1)
     request <- tail(Filter(function(x) x$type == "unsaved:confirm", log$messages), 1)[[1]]$message
     expect_true(request$reasonOnly)
-    session$setInputs(unsaved_confirm_requested = c(
+    expect_true(request$saveMode)
+    session$setInputs(unsaved_save_requested = c(
       request, list(choice = "save", reason = "  Corrected transcription  ")
     ))
     expect_true(saving())
@@ -55,6 +57,7 @@ test_that("the review showcase saves audit rows and loads a batch baseline", {
     expect_equal(audit()$user, rep("demo reviewer", 4))
     expect_false(anyNA(audit()$timestamp))
     expect_false(tracker$is_dirty())
+    session$setInputs(unsaved_confirm_requested = c(request, list(choice = "save")))
     expect_match(output$changes$html, "No unsaved changes.", fixed = TRUE)
     session$setInputs(batch = "B2", load = 1)
     expect_equal(active_batch(), "B2")
@@ -87,10 +90,11 @@ test_that("the review showcase tabs edits reasons and markers work", {
   skip_on_cran()
   for (package in c("DT", "bslib", "promises", "later")) skip_if_not_installed(package)
   app <- local_app_driver(system.file("examples/review", package = "unsaved"))
-  expect_true(app$get_js("document.querySelector('.navbar .unsaved-badge') !== null"))
+  expect_true(app$get_js("document.getElementById('save').parentElement.querySelector('.unsaved-badge') !== null"))
   for (tab in c("changes", "audit", "review")) {
     app$set_inputs(tabs = tab)
     app$wait_for_idle()
+    expect_no_shiny_errors(app)
     expect_equal(app$get_value(input = "tabs"), tab)
     if (tab == "changes") expect_match(app$get_html("#changes"), "No unsaved changes.", fixed = TRUE)
   }
@@ -99,7 +103,10 @@ test_that("the review showcase tabs edits reasons and markers work", {
     "[{row: 1, col: 2, value: '19'}, {row: 1, col: 4, value: 'Checked'}], {priority: 'event'});"
   ))
   app$wait_for_idle()
+  expect_no_shiny_errors(app)
   expect_equal(badge_text(app), "1 unsaved change")
+  expect_equal(app$get_value(output = "edited"), "Edited")
+  expect_equal(app$get_js("document.getElementById('save').disabled"), FALSE)
   expect_equal(app$get_js(
     "document.getElementById('results_table').getAttribute('data-unsaved')"
   ), "true")
@@ -115,9 +122,13 @@ test_that("the review showcase tabs edits reasons and markers work", {
   ))
   app$wait_for_js("document.querySelector('.unsaved-badge').textContent === ''")
   app$wait_for_idle()
+  expect_no_shiny_errors(app)
   expect_equal(badge_text(app), "")
-  app$set_inputs(tabs = "audit")
+  expect_equal(app$get_value(output = "edited"), "")
+  expect_equal(app$get_js("document.getElementById('save').disabled"), TRUE)
+  app$click("view_audit")
   app$wait_for_idle()
+  expect_no_shiny_errors(app)
   expect_match(app$get_html("#audit_table"), "Checked demo source")
   expect_equal(app$get_js("document.querySelectorAll('#audit_table tbody tr').length"), 2)
   expect_match(app$get_html("#audit_table"), "B1-001")
@@ -125,6 +136,7 @@ test_that("the review showcase tabs edits reasons and markers work", {
   expect_match(app$get_js("document.getElementById('audit_table').textContent"), '"" -> Checked', fixed = TRUE)
   app$set_inputs(tabs = "review", note = "Reviewed source")
   app$wait_for_idle()
+  expect_no_shiny_errors(app)
   app$run_js("document.querySelector('[data-value=changes]').click()")
   app$wait_for_js("document.querySelector('.unsaved-dialog textarea') !== null")
   app$run_js(paste0(
@@ -135,7 +147,21 @@ test_that("the review showcase tabs edits reasons and markers work", {
   app$wait_for_js("document.querySelector('.unsaved-dialog .btn-primary').textContent === 'Saving...'")
   app$wait_for_js("document.querySelector('.unsaved-dialog') === null")
   app$wait_for_idle()
+  expect_no_shiny_errors(app)
   expect_equal(app$get_value(input = "tabs"), "changes")
+  expect_equal(badge_text(app), "")
+  expect_no_shiny_errors(app)
+  app$set_inputs(tabs = "review", batch = "B2")
+  app$click("load")
+  app$wait_for_idle()
+  expect_equal(app$get_value(output = "batch_heading"), "Results for B2")
+  expect_no_shiny_errors(app)
+  app$run_js("$('#note').val('Temporary note').trigger('change')")
+  app$wait_for_js("Shiny.shinyapp.$inputValues.note === 'Temporary note'")
+  app$wait_for_idle()
+  app$click("discard")
+  app$wait_for_idle()
+  expect_equal(app$get_value(input = "note"), "")
   expect_equal(badge_text(app), "")
   expect_no_shiny_errors(app)
 })

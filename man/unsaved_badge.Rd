@@ -4,12 +4,20 @@
 \alias{unsaved_badge}
 \title{Display the Page Total of Unsaved Changes}
 \usage{
-unsaved_badge(label = "{n} unsaved change{s}", class = NULL)
+unsaved_badge(
+  label = "{n} unsaved change{s}",
+  class = "badge text-bg-warning",
+  live = TRUE
+)
 }
 \arguments{
-\item{label}{Text template. \code{{n}} is the count; \code{{s}} is the plural suffix.}
+\item{label}{One non-empty text template, or two non-empty templates named
+\code{one} and \code{other}. \code{one} is used for a count of one, \code{other} otherwise.
+\code{{n}} is the count; \code{{s}} is the plural suffix.}
 
 \item{class}{NULL or a character vector of additional CSS classes, without NA.}
+
+\item{live}{Whether to announce badge changes in a polite live region.}
 }
 \value{
 A span filled by the client, with the package assets attached.

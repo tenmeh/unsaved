@@ -70,7 +70,7 @@ test_that("late renderUI field joins saved baseline and dialog discard restores 
   app$wait_for_idle()
   expect_equal(badge_text(app), "1 unsaved change")
   app$run_js("document.querySelector('a[data-value=other]').click()")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(input = "late"), "First value")
   expect_equal(badge_text(app), "")
@@ -81,30 +81,33 @@ test_that("late renderUI field joins saved baseline and dialog discard restores 
 test_that("dialog copy has full stops and omits save without a callback", {
   app <- make_save_app()
   open_dialog(app)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog h2').textContent"), "Unsaved changes")
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"), "You have 1 unsaved change.")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog h2').textContent"), "Save your changes?")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"),
+               paste("You have 1 unsaved change.",
+                     "They will be lost if you continue without saving."))
   expect_equal(app$get_js("document.querySelectorAll('.unsaved-dialog button').length"), 2)
-  app$run_js("document.querySelector('.unsaved-dialog .btn-secondary').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .unsaved-keep').click()")
   app$click("appear")
   app$wait_for_idle()
   app$set_inputs(late = "Edited")
   app$run_js("document.querySelector('a[data-value=other]').click()")
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"), "You have 2 unsaved changes.")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog p').textContent"),
+               paste("You have 2 unsaved changes.",
+                     "They will be lost if you continue without saving."))
   expect_no_shiny_errors(app)
 })
 
 test_that("save success calls the callback, navigates and clears dirty", {
   app <- make_save_app(save = "success")
   open_dialog(app)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Save and leave")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Save and continue")
   expect_equal(app$get_js("document.activeElement.textContent"), "Keep editing")
-  key <- "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'Tab', bubbles:true}))"
-  app$run_js(key)
-  expect_equal(app$get_js("document.activeElement.textContent"), "Discard changes")
-  app$run_js(key)
-  expect_equal(app$get_js("document.activeElement.textContent"), "Save and leave")
-  app$run_js(key)
-  expect_equal(app$get_js("document.activeElement.textContent"), "Keep editing")
+  expect_equal(app$get_js(paste0(
+    "Array.from(document.querySelectorAll('.unsaved-dialog-actions button'))",
+    ".map(x => x.textContent).join('|')"
+  )), "Discard and continue|Keep editing|Save and continue")
+  browser_key(app, "Tab", 9L)
+  expect_equal(app$get_js("document.activeElement.textContent"), "Save and continue")
   app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "saved_count"), "1")
@@ -124,9 +127,9 @@ test_that("save failure stays dirty, shows a safe alert and allows retry", {
     expect_equal(app$get_value(input = "tabs"), "form")
     expect_equal(badge_text(app), "1 unsaved change")
     alert <- app$get_js("document.querySelector('.unsaved-dialog [role=alert]').textContent")
-    expect_equal(alert, "Could not save. Your changes are still here.")
+    expect_equal(alert, "Could not save. Your changes are still here. Try again or keep editing.")
     expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').disabled"), FALSE)
-    expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-danger').disabled"), FALSE)
+    expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-outline-danger').disabled"), FALSE)
     dialog_text <- app$get_js("document.querySelector('.unsaved-dialog').textContent")
     expect_equal(grepl("Secret server detail", dialog_text, fixed = TRUE), FALSE)
     expect_no_shiny_errors(app)
@@ -134,7 +137,7 @@ test_that("save failure stays dirty, shows a safe alert and allows retry", {
   }
 })
 
-test_that("waiting save can be cancelled and its late success never navigates", {
+test_that("waiting save disables Keep editing and Escape until the reply", {
   app <- make_save_app(save = "success")
   open_dialog(app)
   # Hold the actual socket acknowledgement, then deliver it to the real handler.
@@ -154,9 +157,11 @@ test_that("waiting save can be cancelled and its late success never navigates", 
   app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Saving...")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').disabled"), TRUE)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-danger').disabled"), TRUE)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-secondary').disabled"), FALSE)
-  app$run_js("document.querySelector('.unsaved-dialog .btn-secondary').click()")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-outline-danger').disabled"), TRUE)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .unsaved-keep').disabled"), TRUE)
+  app$run_js("document.querySelector('.unsaved-dialog .unsaved-keep').click()")
+  browser_key(app, "Escape", 27L)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog') !== null"), TRUE)
   app$wait_for_idle()
   expect_equal(app$get_value(output = "saved_count"), "1")
   expect_equal(badge_text(app), "")
@@ -164,7 +169,7 @@ test_that("waiting save can be cancelled and its late success never navigates", 
   expect_equal(app$get_js("window.heldSaved.length"), 1)
   app$run_js("window.heldSaved.shift()()")
   app$wait_for_idle()
-  expect_equal(app$get_value(input = "tabs"), "form")
+  expect_equal(app$get_value(input = "tabs"), "other")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog') === null"), TRUE)
   expect_no_shiny_errors(app)
 })
@@ -173,7 +178,8 @@ test_that("save is offered only when every guarded dirty tracker can save", {
   app <- make_save_app(save = "success", multi = TRUE, second_save = FALSE)
   app$set_inputs(second = "Changed")
   open_dialog(app)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary') === null"), TRUE)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').textContent"), "Keep editing")
+  expect_equal(app$get_js("document.querySelectorAll('.unsaved-dialog-actions button').length"), 2)
   expect_no_shiny_errors(app)
 })
 
@@ -197,7 +203,7 @@ test_that("server updateTabsetPanel is guarded while dirty", {
   app$wait_for_idle()
   expect_equal(app$get_value(input = "tabs"), "form")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog') !== null"), TRUE)
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(input = "tabs"), "other")
   expect_equal(badge_text(app), "")

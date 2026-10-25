@@ -48,7 +48,12 @@ export_demo <- function(name, live_packages) {
   lib <- file.path(app, "vendor", "lib")
   dir.create(demo, recursive = TRUE)
   dir.create(lib, recursive = TRUE)
-  invisible(file.copy(list.files(file.path("inst/examples", name), full.names = TRUE), demo))
+  source_dir <- file.path("inst/examples", name)
+  invisible(file.copy(list.files(source_dir, pattern = "[.]R$", full.names = TRUE), demo))
+  # Shiny serves www/ only from the folder of the app, not from vendor/demo.
+  if (dir.exists(file.path(source_dir, "www"))) {
+    invisible(file.copy(file.path(source_dir, "www"), app, recursive = TRUE))
+  }
 
   # --no-test-load: the check that the package loads runs in a new R, which
   # does not know this library path yet. The build of the site has loaded

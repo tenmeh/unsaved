@@ -5,18 +5,23 @@
 \title{Customise Unsaved Dialog Text}
 \usage{
 unsaved_text(
-  title = "Unsaved changes",
-  message = "You have {n} unsaved change{s}.",
+  title = "Save your changes?",
+  message = paste("You have {n} unsaved change{s}.",
+    "They will be lost if you continue without saving."),
   keep = "Keep editing",
-  discard = "Discard changes",
-  save = "Save and leave",
+  discard = "Discard and continue",
+  save = "Save and continue",
   saving = "Saving...",
-  save_failed = "Could not save. Your changes are still here.",
-  unsaved = "(unsaved)",
-  reason = "Reason for change",
+  save_failed = "Could not save. Your changes are still here. Try again or keep editing.",
+  unsaved = "Unsaved change",
+  reason = "Reason for change (required)",
   reason_title = "Why are you making this change?",
-  reason_cancel = "Cancel",
-  reason_save = "Save"
+  reason_cancel = "Keep editing",
+  reason_save = "Save",
+  save_incomplete = "Saved. Some changes were made while saving and are not saved yet.",
+  reason_missing = "Enter a reason to save.",
+  reason_count = "{n} of {max} characters",
+  reason_cut = "The reason was shortened to {max} characters."
 )
 }
 \arguments{
@@ -28,7 +33,7 @@ unsaved_text(
 
 \item{discard}{Discard button text.}
 
-\item{save}{Save and leave button text.}
+\item{save}{Save and continue button text.}
 
 \item{saving}{Text while saving.}
 
@@ -43,6 +48,14 @@ unsaved_text(
 \item{reason_cancel}{Cancel button in the reason-only dialog.}
 
 \item{reason_save}{Save button in the reason-only dialog.}
+
+\item{save_incomplete}{Alert when edits made during a save remain unsaved.}
+
+\item{reason_missing}{Inline error for an empty reason.}
+
+\item{reason_count}{Counter template with \code{{n}} and \code{{max}} placeholders.}
+
+\item{reason_cut}{Alert template with the \code{{max}} placeholder for cut text.}
 }
 \value{
 A classed list for unsaved_track().

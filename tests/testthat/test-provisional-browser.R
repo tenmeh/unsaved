@@ -18,7 +18,7 @@ make_provisional_app <- function(guard_unload = TRUE, compare = "NULL") {
     "})",
     "observeEvent(input$pause, tracker$pause())",
     "observeEvent(input$load, {",
-    "tracker$mark_saved(values = list(name = 'Sam', role = 'Developer'))",
+    "tracker$load_baseline(values = list(name = 'Sam', role = 'Developer'))",
     "updateTextInput(session, 'name', value = 'Sam')",
     "updateSelectInput(session, 'role', selected = 'Developer')",
     "})",

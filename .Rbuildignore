@@ -17,3 +17,5 @@
 ^verification$
 ^renv$
 ^renv\.lock$
+^dev$
+^CONTRIBUTING\.md$

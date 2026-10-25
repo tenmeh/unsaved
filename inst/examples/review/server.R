@@ -60,9 +60,12 @@ server <- function(input, output, session) {
             batches(current)
             audit(next_audit)
             saving(FALSE)
+            # later() runs outside the session, so name it.
+            showNotification(tagList("Saved. ", actionLink("view_audit", "View the audit trail")),
+                             session = session)
             resolve(TRUE)
           }, error = function(error) {
-            message("Review save failed; edits remain unsaved.")
+            message("Review save failed; edits remain unsaved: ", conditionMessage(error))
             saving(FALSE)
             reject(error)
           })
@@ -74,9 +77,9 @@ server <- function(input, output, session) {
     c("Review status" = "status", "Review note" = "note"),
     values = list(Results = results_rv),
     value_outputs = c(Results = "results_table"),
-    compare = list(note = unsaved_compare_text()),
-    require_reason = TRUE, on_save = function(reason) save_review(reason),
-    on_discard = function() results_rv(tracker$baseline()$Results)
+    on_save = function(reason) save_review(reason), require_reason = TRUE,
+    on_discard = function() results_rv(tracker$baseline()$Results),
+    compare = list(note = unsaved_compare_text())
   )
 
   # Keep the table widget and its page in place as edits or restored values arrive.
@@ -99,18 +102,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$save, {
     req(!saving())
-    tracker$ask_reason(function(reason) {
-      saved <- snapshot()
-      # ask_reason delegates completion to the app; navigation saves are
-      # completed by unsaved itself. Both paths use the starting snapshot.
-      promises::then(save_review(reason), onFulfilled = function(ok) {
-        if (isTRUE(ok)) tracker$mark_saved(values = saved)
-        NULL
-      }, onRejected = function(error) {
-        showNotification("Could not save. Your edits are still here.", type = "error")
-        NULL
-      })
-    })
+    tracker$save()
   })
   observeEvent(input$discard, {
     req(!saving())
@@ -123,7 +115,7 @@ server <- function(input, output, session) {
       record <- batches()[[batch]]
       active_batch(batch)
       # Set the baseline before input echoes arrive from the browser.
-      tracker$mark_saved(values = list(
+      tracker$load_baseline(values = list(
         Results = record$Results, status = record$status, note = record$note
       ))
       results_rv(record$Results)
@@ -131,6 +123,11 @@ server <- function(input, output, session) {
       updateTextAreaInput(session, "note", value = record$note)
     })
   })
+  observeEvent(input$view_audit, nav_select("tabs", "audit", session = session))
+  observe({
+    session$sendCustomMessage("review-save", tracker$is_dirty() && !tracker$is_saving())
+  })
+  output$edited <- renderText(if ("Results" %in% tracker$changed()) "Edited" else "")
   output$batch_heading <- renderText(paste("Results for", active_batch()))
   output$save_state <- renderText({
     if (saving()) return("Saving...")

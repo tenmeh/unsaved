@@ -135,13 +135,9 @@ test_that("server confirmation restores previous focus on close", {
     app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
     expect_equal(app$get_js("document.activeElement.textContent"), "Keep editing")
     if (choice == "escape") {
-      app$run_js("
-        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Escape', bubbles: true, cancelable: true
-        }));
-      ")
+      browser_key(app, "Escape", 27L)
     } else {
-      button <- switch(choice, keep = "secondary", discard = "danger", save = "primary")
+      button <- switch(choice, keep = "secondary", discard = "outline-danger", save = "primary")
       app$run_js(paste0("document.querySelector('.unsaved-dialog .btn-", button, "').click()"))
     }
     app$wait_for_idle()
@@ -157,7 +153,7 @@ test_that("server confirmation tolerates removal of the previous focus element",
   action_dialog(app)
   app$run_js("
     document.getElementById('name').remove();
-    document.querySelector('.unsaved-dialog .btn-secondary').click();
+    document.querySelector('.unsaved-dialog .unsaved-keep').click();
   ")
   app$wait_for_idle()
   expect_null(app$get_js("document.querySelector('.unsaved-dialog')"))
@@ -178,7 +174,7 @@ test_that("dirty confirm Keep editing cancels the server action", {
   app <- make_action_app()
   action_dialog(app)
   expect_equal(app$get_value(output = "calls"), "0")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-secondary').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .unsaved-keep').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "calls"), "0")
   expect_equal(app$get_value(input = "name"), "Grace")
@@ -193,7 +189,7 @@ test_that("dirty confirm Keep editing cancels the server action", {
 test_that("dirty confirm Discard restores then runs the callback and action once", {
   app <- make_action_app()
   action_dialog(app)
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "calls"), "1")
   expect_equal(app$get_value(output = "value"), "Ada")
@@ -229,7 +225,7 @@ test_that("dirty confirm failed saving leaves the action pending and permits ret
   expect_equal(app$get_value(output = "saves"), "1")
   expect_equal(badge_text(app), "1 unsaved change")
   expect_equal(app$get_js("document.querySelector('.unsaved-dialog [role=alert]').textContent"),
-               "Could not save. Your changes are still here.")
+               "Could not save. Your changes are still here. Try again or keep editing.")
   app$set_inputs(fail = FALSE)
   app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
   app$wait_for_idle()
@@ -243,7 +239,7 @@ test_that("guard attribute blocks a button and replays its click once after Disc
   app$run_js("document.getElementById('guarded').classList.add('active')")
   action_dialog(app, "guarded")
   expect_equal(app$get_value(output = "calls"), "0")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "calls"), "1")
   expect_equal(app$get_value(output = "value"), "Ada")
@@ -276,7 +272,7 @@ test_that("password edits stay clean and never reach any unsaved message", {
   expect_equal(badge_text(app), "")
   app$set_inputs(name = "Grace")
   action_dialog(app)
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(input = "secret"), "private-edited")
   expect_equal(app$get_value(input = "late_secret"), "private-late-edited")

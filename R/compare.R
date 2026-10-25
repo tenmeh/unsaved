@@ -64,7 +64,11 @@ input_diff <- function(saved, current, inputs, field_names = NULL,
   missing_names <- is.na(display) | !nzchar(display)
   display[missing_names] <- ids[missing_names]
   out <- data.frame(name = ids, label = display, change = vapply(ids, function(id) {
-    format_change(saved[[id]], current[[id]])
+    summary <- format_change(saved[[id]], current[[id]])
+    if (identical(summary, "no change") && is.data.frame(saved[[id]]) && is.data.frame(current[[id]])) {
+      summary <- "table changed"
+    }
+    summary
   }, character(1)), stringsAsFactors = FALSE, row.names = NULL)
   out$saved <- unname(lapply(ids, function(id) saved[[id]]))
   out$current <- unname(lapply(ids, function(id) current[[id]]))
@@ -79,28 +83,52 @@ format_change <- function(saved, current) {
   if (is.data.frame(saved) && is.data.frame(current) &&
         identical(names(saved), names(current)) && nrow(saved) == nrow(current)) {
     cells <- character()
-    count <- 0L
     # Skip identical columns first, so a large table costs little per diff().
     changed_columns <- which(!vapply(seq_along(saved), function(column) {
       identical(saved[[column]], current[[column]])
     }, logical(1)))
-    for (row in seq_len(nrow(saved))) {
-      for (column in changed_columns) {
-        before <- saved[[column]][[row]]
-        after <- current[[column]][[row]]
-        if (values_equal(before, after)) next
-        count <- count + 1L
-        if (count <= 3L) {
-          cells <- c(cells, sprintf("row %d, %s: %s -> %s", row, names(saved)[column],
-                                    format_value(before), format_value(after)))
-        }
-      }
-    }
+    positions <- lapply(changed_columns, function(column) {
+      which(!cell_values_equal(saved[[column]], current[[column]]))
+    })
+    count <- sum(lengths(positions))
     if (!count) return("no change")
+    # Count with vectors; only inspect the first three cells in row order.
+    first <- data.frame(
+      row = unlist(lapply(positions, utils::head, 3L)),
+      column = rep(changed_columns, pmin(lengths(positions), 3L))
+    )
+    first <- utils::head(first[order(first$row, first$column), , drop = FALSE], 3L)
+    for (i in seq_len(nrow(first))) {
+      row <- first$row[i]
+      column <- first$column[i]
+      cells <- c(cells, sprintf("row %d, %s: %s -> %s", row, names(saved)[column],
+                                format_value(saved[[column]][[row]]),
+                                format_value(current[[column]][[row]])))
+    }
     if (count > 3L) cells <- c(cells, sprintf("and %d more cells", count - 3L))
     return(paste(cells, collapse = "; "))
   }
   paste(format_value(saved), "->", format_value(current))
+}
+
+# Match scalar comparison, including its near-zero tolerance and missing values.
+cell_values_equal <- function(saved, current) {
+  numeric_pair <- is.numeric(saved) && is.numeric(current)
+  if (is.list(saved) || is.list(current) || is.object(saved) || is.object(current) ||
+        is.complex(saved) || is.complex(current) ||
+        (!numeric_pair && typeof(saved) != typeof(current))) {
+    return(vapply(seq_along(saved), function(i) values_equal(saved[[i]], current[[i]]), logical(1)))
+  }
+  same <- saved == current
+  same[is.na(same)] <- FALSE
+  missing <- is.na(saved) | is.na(current)
+  same[missing] <- is.na(saved[missing]) & is.na(current[missing])
+  if (numeric_pair) {
+    finite <- is.finite(saved) & is.finite(current)
+    scale <- ifelse(abs(saved[finite]) > 1e-8, abs(saved[finite]), 1)
+    same[finite] <- abs(saved[finite] - current[finite]) / scale <= 1e-8
+  }
+  same
 }
 
 format_value <- function(value, max_items = 3L, max_width = 40L) {

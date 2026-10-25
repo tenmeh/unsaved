@@ -13,7 +13,7 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 Language: en-GB
 Depends: R (>= 4.1.0)
-Imports: shiny (>= 1.7.0), htmltools, R6
+Imports: shiny (>= 1.7.0), htmltools, R6, utils
 Suggests: testthat (>= 3.0.0), shinytest2, bslib, withr, rewind, chromote,
     promises, later, DT
 URL: https://github.com/tenmeh/unsaved, https://tenmeh.github.io/unsaved/

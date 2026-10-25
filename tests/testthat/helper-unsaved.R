@@ -1,6 +1,25 @@
 make_snapshot <- function() list(name = "Ada", number = 1, nested = list(a = 1))
 
+save_replies <- function(log) {
+  Filter(function(sent) sent$type == "unsaved:saved", log$messages)
+}
+
+settle_save <- function(session) {
+  for (i in seq_len(10L)) {
+    later::run_now(0)
+    session$flushReact()
+  }
+}
+
 # Browser helpers shared by several test files.
+browser_key <- function(app, key, code) {
+  browser <- app$get_chromote_session()
+  browser$Input$dispatchKeyEvent(type = "keyDown", key = key,
+                                 windowsVirtualKeyCode = code)
+  browser$Input$dispatchKeyEvent(type = "keyUp", key = key,
+                                 windowsVirtualKeyCode = code)
+}
+
 badge_text <- function(app) {
   app$get_js("document.querySelector('.unsaved-badge').textContent")
 }

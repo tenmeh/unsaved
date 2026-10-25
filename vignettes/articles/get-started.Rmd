@@ -3,25 +3,19 @@ title: "Get started"
 output: rmarkdown::html_document
 ---
 
-## Install
+For your first Shiny form with unsaved-change tracking. This tutorial adds
+a badge, saving, discard and a guarded record load.
 
-```r
-# install.packages("remotes")
-remotes::install_github("tenmeh/unsaved")
-```
+## Track a form
 
-## Track your form
+List the input ids that belong to your form. Add `unsaved_badge()` to show
+changes. The first values become the saved baseline. A changed field
+gets a dot by its label.
 
-`unsaved` helps users of Shiny forms see edits they have not saved and asks
-before they lose them. Use it for record editors, settings pages and
-data-entry forms with a Save button. Your app validates and saves the data.
+This example stores a name in memory for this session only. Replace
+`save_record()` with your app's storage code.
 
-List the input ids that belong to the form. Add `unsaved_badge()` to show
-the number of changed fields. A changed field also gets a dot by its label.
-The navigation guard and badges cover the whole page, not one form. A badge
-counts distinct changed fields across all trackers, including modules.
-
-```r
+```{r, eval = FALSE}
 library(shiny)
 library(unsaved)
 
@@ -44,331 +38,63 @@ server <- function(input, output, session) {
     TRUE
   }
   tracker <- unsaved_track("name", on_save = save_record)
-  observeEvent(input$save, {
-    save_record()
-    tracker$mark_saved()
-  })
+  observeEvent(input$save, tracker$save())
   observeEvent(input$discard, tracker$discard())
 }
 
 shinyApp(ui, server)
 ```
 
-The package does not save data. Call `mark_saved()` after your own save
-finishes. Call `discard()` to restore saved values through supported bindings.
+Edit Name, then click Other. The guard asks before changing tabs.
+Keep editing cancels. Discard and continue restores the saved value.
+Save and continue runs `on_save` before continuing. The Save button uses
+`tracker$save()` to run the same callback without changing tabs.
+See [Saving](saving.html) for callback results, errors and background saves.
 
-`changed()` gives the ids of changed fields, `count()` gives their number,
-and `is_dirty()` tells you whether there are changes. Use `baseline()` for
-the saved values. The first value of a field added by `renderUI()` after
-start joins the baseline automatically.
+The default guards cover tab navigation and browser close or refresh.
+Tagged buttons and links can also be guarded. See
+[Modules and navigation](modules-navigation.html) for their scope and
+[Limits](limits.html) for browser warnings.
 
-## Save and leave
+## Inspect and discard changes
 
-An `on_save` function adds **Save and leave** to the navigation dialog.
-It takes no arguments unless `require_reason = TRUE`. The tracker marks
-values saved after it returns
-exactly `TRUE` or its promise resolves to exactly `TRUE`, then opens the
-requested tab. Returning `FALSE` or raising an error keeps the edits and
-shows a safe failure message.
+`is_dirty()` reports whether tracked values differ from the baseline.
+`count()` gives the number of changed fields. `changed()` gives their ids.
+These queries are reactive. `baseline()` returns the saved named list and
+is not reactive. See [Server values and tables](server-values.html) for
+`diff()` and field labels.
 
-Other results, including NULL, NA, a number or an `ExtendedTask`, fail the
-save and raise one server warning.
+`discard()` requests restoration through the browser's input bindings.
+It does not wait for restored values to return to the server.
+If you supply `on_discard`, read `tracker$baseline()` there, not `input`.
+Callback errors become warnings. See [Limits](limits.html) for supported
+bindings and [Server values and tables](server-values.html) for server restoration.
 
-For asynchronous saving, read inputs before starting the worker and return
-the promise. Configure a future worker plan when the app starts.
+## Confirm an action
 
-```r
-tracker <- unsaved_track("name", on_save = function() {
-  name <- input$name
-  promises::future_promise({
-    save_record(name)
-    TRUE
-  })
-})
-```
+`confirm(action)` runs a function with no arguments at once when clean.
+When dirty, it asks first, even while paused. Keep editing cancels.
+Discard restores inputs, calls `on_discard`, then runs the action once.
+Save and continue runs it only after a successful save with no edits left.
+Only one confirmation can wait per tracker. Further requests warn and are
+dropped, not queued. Errors in the action warn without ending the session.
 
-The promise must resolve to exactly `TRUE`. The tracker saves the snapshot
-taken when the save starts, so edits made during the save stay unsaved.
-A promise that resolves to `FALSE` or any other value, or rejects, keeps the
-baseline and raises one server warning. Rejection messages stay on the server.
-Only one save per tracker can be pending; another request is ignored with a
-warning. The dialog shows "Saving..." until the reply. Keep editing cancels
-navigation only. Return the promise, not an `ExtendedTask`; for example use
-`promises::future_promise()` or `mirai::mirai()` wrapped in a promise.
-
-With several trackers, a shared Save and leave saves each tracker on its own.
-One can succeed while another fails, and nothing is rolled back. Use one
-tracker and one save for fields that must save together.
-
-## Save errors: failed save and retry
-
-Keep validation and error logging inside your save function. This server
-recipe requires a non-empty name. `save_record()` is your app's storage code:
-
-```r
-save_form <- function() {
-  if (!nzchar(trimws(input$name))) return(FALSE)
-  tryCatch({
-    save_record(input$name)
-    TRUE
-  }, error = function(error) {
-    message("Save failed: ", conditionMessage(error))  # server log
-    FALSE
-  })
-}
-tracker <- unsaved_track("name", on_save = save_form)
-observeEvent(input$save, {
-  if (isTRUE(save_form())) {
-    tracker$mark_saved()
-  } else {
-    showNotification("Could not save. Your changes are still here.")
-  }
-})
-```
-
-Use your app's logger in place of `message()` if needed. Clear the name and
-try Save and leave: the dialog stays open and shows the generic message
-"Could not save. Your changes are still here." Choose Keep editing, enter a
-valid name and try again. Only a successful save changes the saved baseline.
-Storage errors are logged on the server; their details do not reach the browser.
-
-## Track an edited table on the server
-
-DT and rhandsontable send edit events, not a complete saved table. Keep the
-edited table in a reactiveVal and give that reactive to `values`. This DT
-example belongs inside the app's server function; the UI needs
-`DT::DTOutput("visits_table")` and Save and Discard action buttons.
-
-```r
-table_rv <- reactiveVal(data.frame(visit = 1:3, score = c(2, 4, 6)))
-tracker <- unsaved_track(
-  inputs = character(),
-  values = list(Visits = table_rv),
-  value_outputs = c(Visits = "visits_table"),
-  on_discard = function() table_rv(tracker$baseline()$Visits)
-)
-output$visits_table <- DT::renderDT({
-  DT::datatable(table_rv(), editable = TRUE, rownames = FALSE,
-                selection = "none")
-}, server = TRUE)
-observeEvent(input$visits_table_cell_edit, {
-  table_rv(DT::editData(table_rv(), input$visits_table_cell_edit,
-                       rownames = FALSE))
-})
-observeEvent(input$save, {
-  save_visits(table_rv())  # your app's storage function
-  tracker$mark_saved()
-})
-observeEvent(input$discard, tracker$discard())
-```
-
-The list names are the value ids and labels. They must be unique and must
-not clash with input ids. Supply at least one input or value. A reactive
-expression also works: its first available result becomes the baseline.
-Data frames compare column by column, using the usual comparison rules;
-`compare = list(Visits = identical)` selects an exact comparison.
-
-Changed values appear in `is_dirty()`, `count()`, `changed()` and `diff()`,
-and count towards the badge. For example, a change summary can read
-"a table of 12 rows -> a table of 13 rows". Input changes appear first in
-`diff()`, followed by server values in list order. `value_outputs` is optional:
-with it, the mapped output is outlined while the value is changed; without it,
-the value has no marker. Use module-local output ids.
-
-`mark_saved()` snapshots server values too. To supply saved data explicitly,
-use `tracker$mark_saved(values = list(Visits = saved_table))`. The package
-never sends these values to the browser, even on discard. The table widget
-still renders the data that your app gives it. Restoring the reactiveVal is
-the app's job: `discard()` calls `on_discard`, which reads `tracker$baseline()`
-in the example. Without that callback, the edited server value stays dirty.
-
-## Reason for change and audit trails
-
-Set `require_reason = TRUE` to require a reason for Save and leave.
-`on_save` must then take exactly one argument named `reason`. With the default
-`require_reason = FALSE`, it must take no arguments.
-
-The following server example appends changes to an in-memory audit table.
-Replace this store with your app's persistent audit table, and write the
-record and audit entry in one transaction. `authenticated_user()` must return
-the user id from your app's authentication system.
-
-```r
-audit <- reactiveVal(data.frame())
-save_with_reason <- function(reason) {
-  changes <- tracker$diff()
-  changes$reason <- rep(reason, nrow(changes))
-  changes$user <- rep(authenticated_user(), nrow(changes))
-  changes$timestamp <- rep(Sys.time(), nrow(changes))
-  save_record(input$name)  # your app's storage function
-  audit(rbind(audit(), changes))
-  TRUE
-}
-tracker <- unsaved_track("name", require_reason = TRUE,
-  on_save = function(reason) save_with_reason(reason))
-observeEvent(input$save, {
-  tracker$ask_reason(function(reason) {
-    if (isTRUE(save_with_reason(reason))) tracker$mark_saved()
-  })
-})
-```
-
-The package does not store the audit trail; the app does. Capture `diff()`
-before marking the values saved. This feature supplies a reason to your
-app's audit code; it does not implement a regulatory compliance system.
-
-The dialog has a required text area labelled "Reason for change". Save stays
-disabled until the trimmed reason is non-empty. Reasons are trimmed and cut
-to at most 1000 characters, with a visible counter. They go only to the
-server and are never logged by the package. Callback errors use generic
-package warnings when a reason is involved; handle diagnostics in your app
-without exposing the reason.
-
-`tracker$ask_reason(action)` always asks, even when clean or paused, and also
-works with `require_reason = FALSE`. Its button labels come from
-`unsaved_text(reason_cancel = "Cancel", reason_save = "Save")`.
-Cancel does nothing; Save calls `action(reason)` once. The action saves and
-calls `mark_saved()` itself. Only one `confirm()` or `ask_reason()` can be
-pending per tracker; a second request warns and is dropped.
-
-Customise the label and the reason-only heading with
-`unsaved_text(reason = "Reason for change",`
-`reason_title = "Why are you making this change?")`. A shared Save and leave
-dialog requires a reason if any involved tracker requires one; that reason
-is passed to each callback that requires it.
-
-## The navigation guard
-
-The guard stops tab clicks, arrow keys and `updateTabsetPanel()` while the
-form is dirty. The user can keep editing, discard, or save and leave.
-Call `mark_saved()`, `discard()` (and wait for the restored inputs), or
-`pause()` before navigating from the server. `resume()` restores the guards and markers.
-Set `guard_nav = FALSE` to turn off the navigation guard.
-
-The close or refresh guard uses the browser's own warning. Browsers may
-suppress it, especially without prior interaction. Set `guard_unload = FALSE`
-to turn it off. The live demo runs in an iframe; open it in a new tab to
-try the browser warning.
-
-[Try the profile editor](live-demo.html).
-
-## Multi-step forms
-
-Allow movement between the steps and confirm only at real exit points.
-This server recipe assumes `pages` contains the form steps and a `home` tab:
-
-```r
-tracker <- unsaved_track(c("name", "age"), guard_nav = FALSE)
-# In the UI: unsaved_guard(actionButton("exit", "Exit form"))
-observeEvent(input$exit, updateTabsetPanel(session, "pages", "home"))
-```
-
-The browser close guard remains active. `unsaved_guard()` uses
-`guard_clicks = TRUE` independently of `guard_nav`. Use `tracker$confirm()`
-for server actions. Tagged tabs always follow `guard_nav`.
-
-## Field labels and the change list
-
-Give `inputs` names for the labels shown in a review screen:
-
-```r
-tracker <- unsaved_track(c("Full name" = "name", Role = "role"))
-output$changes <- renderTable(tracker$diff()[, c("label", "change")])
-```
-
-`diff()` is reactive. It returns `name`, `label`, `change`, `saved` and
-`current`, in input order. The values are list columns. Empty names use the
-id, and duplicate ids are an error. Password fields are never tracked, so
-their values cannot enter a snapshot, browser cache or change summary.
-A reported password id stays excluded even after its widget is removed.
-
-## Choose text and comparison rules
-
-```r
-tracker <- unsaved_track("name",
-  text = unsaved_text(title = "Profile changes", keep = "Stay"),
-  compare = list(name = unsaved_compare_text()),
-  on_discard = function() showNotification("Changes discarded")
-)
-```
-
-`unsaved_text()` controls the title, message, button text, saving text,
-failure message and screen-reader text. `{n}` and `{s}` are message
-placeholders. A dialog shared by several trackers uses the first one's text.
-`unsaved_compare_text()` trims outer whitespace and treats empty text as
-NULL; either rule can be turned off. A comparison can be NULL, one function
-for every input, or a named list by input id. Each function takes saved and
-current values and returns one non-missing logical for equality.
-
-Numeric values use `all.equal()` with relative tolerance `1e-8`. Near zero,
-`all.equal()` uses an absolute difference. For exact amounts or ids, use
-`compare = list(amount = identical)`.
-
-`on_discard()` runs after every server or dialog discard. Errors become
-warnings. After a direct `discard()` call, inputs may not yet have returned
-from the browser; use `baseline()` for saved values.
-
-A direct `discard()` is a request: the browser restores the inputs later.
-Read the baseline in the callback:
-
-```r
-on_discard = function() {
-  saved_values <- tracker$baseline()
-  # Use this snapshot, not the not-yet-restored input values.
-}
-```
-
-Restoration is tested with these Shiny inputs:
-
-- Text and text area inputs, and numeric inputs.
-- Radio buttons, checkboxes and checkbox groups.
-- Select inputs with the default selectize binding.
-- Date inputs and date ranges.
-- Numeric sliders and ranges, date sliders and ranges, and date-time sliders.
-
-`discard()` cannot restore file uploads, password fields or inputs without
-a Shiny binding. Missing elements are skipped. Password fields are not tracked.
-Discard does not undo writes your app has already made to storage.
-
-## Protect loading and other actions
-
-```r
-observeEvent(input$load, {
-  record_id <- input$record
-  tracker$confirm(function() load_record(record_id))
-})
-```
-
-Clean trackers run the action at once. Dirty trackers open the dialog even
-while paused. Keep editing cancels. Discard restores, calls `on_discard`, then
-runs the action once. Save and leave runs it only after a successful save.
-Only one confirmation per tracker can be pending. Calling `confirm()` again
-while waiting warns and drops the new action without running or queuing it.
-The first confirmation stays open. Explicit confirmation works even with
-`guard_nav = FALSE`.
-
-For browser clicks, wrap a tag in `unsaved_guard()`, or add the
-`data-unsaved-guard` attribute yourself:
-
-```r
-unsaved_guard(actionButton("delete", "Delete draft"))
-unsaved_guard(tags$a(href = "/another-page", "Another page"))
-```
-
-Modal close buttons can use the same attribute. Dirty trackers with
-`guard_clicks = TRUE` block the click; discard or a successful save replays it.
+Use `confirm(action, text = unsaved_text(title = "Load another record?"))`
+to set text for that dialog only. Capture the chosen record id before
+asking if the action must use the selection made at that time.
 
 ## Loading a record
 
-Set the saved baseline before sending input updates. Here `records()` holds
-saved records with the tracked fields `name` and `location`:
+Set the saved baseline before sending input updates. This separate server
+recipe assumes a tracker for `name` and `location`, two text inputs, a
+record selector and a Load button. `records()` is your app's record store:
 
-```r
+```{r, eval = FALSE}
 observeEvent(input$load, {
   record_id <- input$record
   tracker$confirm(function() {
     record <- records()[[record_id]]
-    tracker$mark_saved(values = record)
+    tracker$load_baseline(values = record)
     updateTextInput(session, "name", value = record$name)
     updateTextInput(session, "location", value = record$location)
   })
@@ -377,11 +103,13 @@ observeEvent(input$load, {
 
 `values` is a named list keyed by tracked input id. Omitted ids use their
 current input values. Unknown ids are errors; password ids are ignored.
-File values can be saved on the server but are never sent to the browser.
-With no argument, `mark_saved()` still captures current input values.
+`load_baseline(values)` requires a named list. To acknowledge a completed save,
+use `mark_saved(values = snapshot)`; it publishes the real state and keeps later
+edits dirty. With no argument, `mark_saved()` captures current input values.
 
-The browser receives a clean state immediately. Until the updated values
-return, server comparisons can briefly report the old inputs as dirty.
+`load_baseline()` sends a clean state to the browser immediately.
+Until the updated values return, server comparisons can briefly report
+the old inputs as dirty.
 The next server comparison decides the state; matching echoes leave it clean.
 Supply values with the types returned by each input binding. Use `confirm()`
 before replacing edits, as above.
@@ -390,76 +118,3 @@ The pause, update, wait for every echo, `mark_saved()`, resume pattern is still
 useful when the final values are not known in advance, or updates span several
 round trips. Disable editing and saving while that load is pending. Paused
 queries still report real differences; `is_paused()` can show a loading state.
-
-## Editing inside a modal
-
-Keep `guard_clicks = TRUE` and guard the explicit close button. This server
-recipe tracks a text field created inside the modal:
-
-```r
-tracker <- unsaved_track("modal_name")
-observeEvent(input$edit, {
-  showModal(modalDialog(
-    textInput("modal_name", "Name", "Ada"),
-    easyClose = FALSE,
-    footer = unsaved_guard(actionButton("close_editor", "Close"))
-  ))
-})
-observeEvent(input$close_editor, removeModal())
-```
-
-With edits pending, Close asks before discarding them. Escape and backdrop
-clicks are not guarded otherwise, so use `modalDialog(easyClose = FALSE)`.
-The guard does not intercept a server call to `removeModal()`; confirm other
-server actions before they remove the modal. Add `on_save` and your app's save
-code if the dialog should also offer Save and leave.
-
-## Modules
-
-For a module-local count, use a custom output. The built-in badge shows the
-page total. Each module can use this pattern:
-
-```r
-editor_ui <- function(id) {
-  ns <- NS(id)
-  tagList(textInput(ns("name"), "Name"), textOutput(ns("count")))
-}
-editor_server <- function(id) {
-  moduleServer(id, function(input, output, session) {
-    tracker <- unsaved_track("name")
-    output$count <- renderText(paste(tracker$count(), "changed fields"))
-    tracker
-  })
-}
-```
-
-Create the tracker inside `moduleServer()` with local input ids. Do not
-prefix them with `session$ns()`. Save, discard and navigation events stay
-in that module. A badge counts distinct changed fields across modules.
-
-## Use with rewind
-
-`rewind` is an optional package for undo and redo:
-
-```r
-rewind::rewind_enable(inputs = "name")
-tracker <- unsaved_track("name")
-observeEvent(input$undo, rewind::rewind_undo())
-observeEvent(input$redo, rewind::rewind_redo())
-```
-
-Undoing to saved values clears dirty state. Redo makes the form dirty again.
-Discard is a normal edit, so rewind can undo it. For text, slow typing makes
-several history steps; `updateOn = "blur"` gives one per edit. Ctrl+Z inside
-a text box uses the browser's own undo, so use rewind's controls or API.
-
-## Limits
-
-For cached, restorable inputs, the close-tab warning is armed as soon as the
-browser reports a changed value, even while the server is busy. Paused trackers
-and `guard_unload = FALSE` are excluded. Markers, badges, tab and click guards
-still follow the server. The browser uses JSON equality; the next server state
-wins, including custom comparisons. Password and file inputs have no
-provisional protection. Browser close warnings can be suppressed, so they are
-not a guarantee. `unsaved` does not recover a lost session or resolve conflicts
-between users editing the same record.

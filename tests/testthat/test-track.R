@@ -1,7 +1,7 @@
 test_that("the tracker signature keeps session last", {
   expect_named(formals(unsaved_track), c(
-    "inputs", "guard_nav", "guard_unload", "guard_clicks", "on_save", "on_discard",
-    "compare", "text", "values", "value_outputs", "require_reason", "session"
+    "inputs", "values", "value_outputs", "on_save", "require_reason", "on_discard",
+    "compare", "guard_nav", "guard_unload", "guard_clicks", "text", "session"
   ))
 })
 

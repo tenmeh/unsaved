@@ -47,7 +47,7 @@ test_that("reason-only dialog uses custom button labels", {
   app$click("own_save")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
   expect_equal(app$get_js(
-    "document.querySelector('.unsaved-dialog .btn-secondary').textContent"
+    "document.querySelector('.unsaved-dialog .unsaved-keep').textContent"
   ), "Back")
   expect_equal(app$get_js(
     "document.querySelector('.unsaved-dialog .btn-primary').textContent"
@@ -67,6 +67,9 @@ test_that("server table edits show a badge and mapped output marker", {
   app$wait_for_idle()
   app$wait_for_js("document.getElementById('visits_table').hasAttribute('data-unsaved')")
   expect_equal(badge_text(app), "1 unsaved change")
+  expect_equal(app$get_js("getComputedStyle(document.getElementById('visits_table')).outlineStyle"), "dashed")
+  app$run_js("document.getElementById('visits_table').style.setProperty('--unsaved-outline', '4px dashed red')")
+  expect_equal(app$get_js("getComputedStyle(document.getElementById('visits_table')).outlineWidth"), "4px")
   sibling_marker <- paste0(
     "document.getElementById('visits_table').previousElementSibling",
     ".classList.contains('unsaved-output-marker')"
@@ -77,7 +80,7 @@ test_that("server table edits show a badge and mapped output marker", {
   description <- app$get_js(paste0(
     "document.getElementById('visits_table').previousElementSibling.querySelector('.unsaved-sr').id"
   ))
-  expect_equal(app$get_js(paste0("document.getElementById('", description, "').textContent")), "(unsaved)")
+  expect_equal(app$get_js(paste0("document.getElementById('", description, "').textContent")), "Unsaved change")
   expect_equal(app$get_js("document.getElementById('visits_table').getAttribute('aria-describedby')"),
                paste("existing-description", description))
   app$click("refresh")
@@ -87,7 +90,7 @@ test_that("server table edits show a badge and mapped output marker", {
     "document.getElementById('visits_table').previousElementSibling.querySelector('.unsaved-sr').id"
   )), description)
   app$run_js("document.querySelector('a[data-value=other]').click()")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-danger').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .btn-outline-danger').click()")
   app$wait_for_idle()
   expect_equal(badge_text(app), "")
   expect_equal(marker_count(app), 0)
@@ -123,16 +126,28 @@ test_that("removing a mapped output removes its sibling marker", {
   expect_no_shiny_errors(app)
 })
 
-test_that("required reason disables Save until filled and reaches on_save", {
+test_that("required reason shows an inline error and reaches on_save", {
   app <- make_values_reason_app()
   app$click("edit")
   app$run_js("document.querySelector('a[data-value=other]').click()")
   disabled <- "document.querySelector('.unsaved-dialog .btn-primary').disabled"
-  expect_equal(app$get_js(disabled), TRUE)
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog label').textContent"), "Reason for change")
+  expect_equal(app$get_js(disabled), FALSE)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog label').textContent"),
+               "Reason for change (required)")
   fill_reason(app, " \n\t ")
-  expect_equal(app$get_js(disabled), TRUE)
+  expect_equal(app$get_js(disabled), FALSE)
+  app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
+  expect_equal(app$get_js("document.querySelector('.unsaved-reason-error').textContent"),
+               "Enter a reason to save.")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog textarea').getAttribute('aria-invalid')"), "true")
+  expect_equal(app$get_js("document.activeElement.tagName"), "TEXTAREA")
+  expect_equal(app$get_js(paste0(
+    "document.querySelector('.unsaved-dialog textarea').getAttribute('aria-describedby').split(' ')",
+    ".includes(document.querySelector('.unsaved-reason-error').id)"
+  )), TRUE)
   fill_reason(app, "  corrected record  ")
+  expect_equal(app$get_js("document.querySelector('.unsaved-reason-count').textContent"), "20 of 1000 characters")
+  expect_null(app$get_js("document.querySelector('.unsaved-dialog textarea').getAttribute('aria-invalid')"))
   expect_equal(app$get_js(disabled), FALSE)
   app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
   app$wait_for_js("document.querySelector('.unsaved-dialog') === null")
@@ -152,16 +167,23 @@ test_that("ask_reason browser Cancel does nothing and Save sends a bounded reaso
   expect_equal(app$get_js(paste0(
     "Array.from(document.querySelectorAll('.unsaved-dialog button'))",
     ".map(x => x.textContent).join(', ')"
-  )), "Cancel, Save")
+  )), "Keep editing, Save")
   fill_reason(app, "cancel this")
-  app$run_js("document.querySelector('.unsaved-dialog .btn-secondary').click()")
+  app$run_js("document.querySelector('.unsaved-dialog .unsaved-keep').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "own_received"), "none")
   app$click("own_save")
   app$wait_for_js("document.querySelector('.unsaved-dialog') !== null")
-  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').disabled"), TRUE)
-  fill_reason(app, strrep("x", 1005))
-  expect_equal(app$get_js("document.querySelector('.unsaved-reason-count').textContent"), "1000 / 1000")
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog .btn-primary').disabled"), FALSE)
+  app$run_js(paste0(
+    "var area = document.querySelector('.unsaved-dialog textarea');",
+    "area.value = 'x'.repeat(1005);",
+    "area.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertFromPaste'}));"
+  ))
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog textarea').value.length"), 1000)
+  expect_equal(app$get_js("document.querySelector('.unsaved-dialog [role=alert]').textContent"),
+               "The reason was shortened to 1000 characters.")
+  expect_equal(app$get_js("document.querySelector('.unsaved-reason-count').textContent"), "1000 of 1000 characters")
   app$run_js("document.querySelector('.unsaved-dialog .btn-primary').click()")
   app$wait_for_idle()
   expect_equal(app$get_value(output = "own_received"), strrep("x", 1000))
