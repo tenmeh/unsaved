@@ -22,3 +22,6 @@ docs/
 verification/
 renv.lock
 renv/
+
+# Package context lives in a private repo
+dev/
