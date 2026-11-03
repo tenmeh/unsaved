@@ -37,7 +37,7 @@ make_values_reason_app <- function(custom_text = FALSE) {
 fill_reason <- function(app, value) {
   app$run_js(paste0(
     "var area = document.querySelector('.unsaved-dialog textarea'); area.value = ",
-    jsonlite::toJSON(value, auto_unbox = TRUE),
+    encodeString(value, quote = "\""),
     "; area.dispatchEvent(new Event('input', {bubbles: true}));"
   ))
 }

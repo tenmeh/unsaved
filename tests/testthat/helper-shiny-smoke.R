@@ -57,7 +57,8 @@ local_app_driver <- function(app_dir, ..., .local_envir = parent.frame()) {
     .local_envir = .local_envir
   )
   # A slow CI runner can miss chromote's 10-second wait for the first page
-  # load. Try once more on a time-out; a real failure fails twice.
+  # load, or for Chrome's debugging port. Try once more; a real failure fails
+  # twice.
   start_app <- function() {
     # A bslib app compiles its theme with Sass on the first page request. Each
     # test app runs in a fresh temporary directory, so the compile is never
@@ -66,7 +67,7 @@ local_app_driver <- function(app_dir, ..., .local_envir = parent.frame()) {
     chrome <- chromote::default_chromote_object()
     chrome$default_timeout <- max(chrome$default_timeout, 60)
     tryCatch(shinytest2::AppDriver$new(app_dir, ...), error = function(e) {
-      if (!grepl("timed out", conditionMessage(e), fixed = TRUE)) stop(e)
+      if (!grepl("timed out|debugging port", conditionMessage(e))) stop(e)
       shinytest2::AppDriver$new(app_dir, ...)
     })
   }

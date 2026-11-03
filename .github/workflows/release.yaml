@@ -56,8 +56,10 @@ jobs:
               /^$/ { found = 0 }' PACKAGES)
           fi
           if [ -z "$version" ]; then
-            echo "::error::$pkg is not on CRAN, and no version was given."
-            exit 1
+            # Before the first CRAN release there is nothing to do.
+            echo "$pkg is not on CRAN yet, and no version was given. There is nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
